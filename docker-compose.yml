@@ -1,0 +1,29 @@
+services:
+  puzzlebox:
+    image: lehmann314159/puzzlebox:latest
+    container_name: puzzlebox
+    ports:
+      - "127.0.0.1:9100:9100"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=9100
+      - HOST=0.0.0.0
+      - BOX_DB=/app/data/box.db
+      - ALLOW_ORIGINS=https://puzzlebox.verynormalserver.com
+      # The agent pane spends the GPU and the MCP endpoint is public, so refuse to start without both secrets.
+      - UI_TOKEN=${UI_TOKEN:?set UI_TOKEN in .env}
+      - MCP_BEARER=${MCP_BEARER:?set MCP_BEARER in .env}
+      - BOX_SECRET=${BOX_SECRET:-}
+      - OLLAMA_URL=http://host-gateway:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-mistral-small3.2:24b}
+      - OLLAMA_MODELS=${OLLAMA_MODELS:-}
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    restart: unless-stopped
+    networks:
+      - web
+
+networks:
+  web:
+    external: true

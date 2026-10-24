@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puzzle Box</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{--bg:#16191F;--panel:#1F242C;--line:#2E343E;--ink:#F1EEE6;--mute:#B9BEC7;--brass:#D9A441;--teal:#5BC0B2;--red:#E58A6B;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;--sans:'IBM Plex Sans',system-ui,Arial,sans-serif}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+body{display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line)}
+header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.2px}
+header h1 span{color:var(--brass)}
+header .ctl{display:flex;gap:14px;align-items:center;margin-left:auto;font-size:14px;color:var(--mute);flex-wrap:wrap}
+input{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:14px}
+select,button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:14px}
+button{cursor:pointer}
+label{display:flex;gap:6px;align-items:center;cursor:pointer}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(380px,5fr) 6fr;gap:0}
+@media (max-width:900px){main{grid-template-columns:1fr;grid-template-rows:auto 1fr}}
+section{min-height:0;display:flex;flex-direction:column}
+section+section{border-left:1px solid var(--line)}
+h2{margin:0;padding:12px 20px;font-family:var(--mono);font-size:13px;letter-spacing:2.5px;text-transform:uppercase;color:var(--brass);font-weight:600;border-bottom:1px solid var(--line)}
+#boxpane{padding:12px 20px 20px;overflow:auto}
+svg{width:100%;max-width:640px;height:auto;display:block;margin:0 auto}
+.chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+.chip{font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--mute);background:var(--panel)}
+.chip.on{color:var(--bg);background:var(--brass);border-color:var(--brass)}
+.chip.bad{color:var(--bg);background:var(--red);border-color:var(--red)}
+#says{margin:10px auto 0;max-width:640px;font-size:15px;line-height:1.5;color:var(--mute);min-height:3em;text-align:center}
+#secret{margin:10px auto 0;max-width:640px;font-family:var(--mono);font-size:13px;color:var(--red);text-align:center}
+#trace{flex:1;overflow:auto;padding:10px 14px 24px}
+.row{border:1px solid var(--line);background:var(--panel);border-radius:10px;margin:0 0 10px;overflow:hidden}
+.row.new{animation:pop .5s ease-out}
+@keyframes pop{from{border-color:var(--brass);box-shadow:0 0 0 3px rgba(217,164,65,.25)}to{}}
+.head{display:flex;gap:10px;align-items:baseline;padding:9px 12px;cursor:pointer;flex-wrap:wrap}
+.t{font-family:var(--mono);font-size:12px;color:var(--mute)}
+.badge{font-family:var(--mono);font-size:12px;border-radius:6px;padding:1px 7px;border:1px solid var(--line);color:var(--mute)}
+.inst{color:var(--teal);border-color:var(--teal)}
+.era{color:var(--brass);border-color:var(--brass)}
+.bad{color:var(--red);border-color:var(--red)}
+.pause{color:#F1C27D;border-color:#F1C27D}
+.call{font-family:var(--mono);font-size:15px;font-weight:600}
+.args{font-family:var(--mono);font-size:13px;color:var(--mute);word-break:break-word}
+.said{padding:0 12px 10px;font-size:14px;line-height:1.45;color:var(--ink)}
+.said.err{color:var(--red)}
+.detail{display:none;border-top:1px solid var(--line);padding:10px 12px;background:#191D24}
+.row.open .detail{display:block}
+.detail h3{margin:8px 0 4px;font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--mute);font-weight:600}
+pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#E9E4D8}
+.mh{color:var(--brass);font-weight:600}
+#empty{color:var(--mute);padding:24px;text-align:center;font-size:15px}
+#split{flex:0 0 7px;cursor:row-resize;background:var(--line);border-top:1px solid #3a414d}
+#split:hover{background:var(--brass)}
+#chat{flex:0 0 44%;min-height:150px;display:flex;flex-direction:column;background:var(--bg)}
+#chatbar{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap;font-size:14px;color:var(--mute)}
+#chatbar .sp{margin-left:auto}
+#ts{flex:1;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.m{border-radius:10px;padding:8px 12px;font-size:14px;line-height:1.45;max-width:94%;white-space:pre-wrap;word-break:break-word}
+.m.user{align-self:flex-end;background:#2B3340;border:1px solid var(--line)}
+.m.model,.m.final{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+.m.final{border-color:var(--teal)}
+.m.note{align-self:center;color:var(--mute);font-size:13px;text-align:center}
+.m.error,.m.err .out{color:var(--red)}
+.m.tool{align-self:stretch;max-width:100%;background:transparent;border-left:3px solid var(--brass);border-radius:0;padding:2px 10px;font-size:13px}
+.m.tool .what{font-family:var(--mono)}
+.m.tool .out{color:var(--mute);margin-top:2px}
+.m.ask{align-self:stretch;max-width:100%;background:#2A2618;border:1px solid #F1C27D}
+.m.ask button{margin:8px 8px 0 0}
+.m.ask button.yes{background:var(--brass);color:var(--bg);border-color:var(--brass)}
+#compose{border-top:1px solid var(--line);padding:8px 14px}
+#compose form{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+#compose textarea{flex:1;min-width:200px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:14px;resize:none}
+#fields{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;flex:1}
+#fields label{flex-direction:column;align-items:flex-start;gap:2px;font-size:12px;color:var(--mute)}
+#fields input[type=text],#fields textarea{min-width:130px}
+.client{color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Puzzle Box</span> · the box and the wire</h1>
+  <div class="ctl">
+    <form id="newbox" style="display:flex;gap:6px"><input id="seed" placeholder="seed (optional)" size="14" autocomplete="off"><button>New box</button></form>
+    <label>Box <select id="boxsel"></select></label>
+    <label><input type="checkbox" id="follow" checked> follow latest</label>
+    <label><input type="checkbox" id="meta"> show _meta</label>
+    <label title="Presenter only: shows the combination, stars and word"><input type="checkbox" id="reveal"> reveal secrets</label>
+    <button id="pause">Pause</button>
+    <button id="clear">Clear view</button>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>The box</h2>
+    <div id="boxpane">
+      <svg id="svg" viewBox="0 -30 640 500" role="img" aria-label="The puzzle box as it is on the table right now"></svg>
+      <div class="chips" id="chips"></div>
+      <div id="says"></div>
+      <div id="secret"></div>
+    </div>
+  </section>
+  <section>
+    <h2>Traffic</h2>
+    <div id="trace"><div id="empty">Waiting for the first request. Press <b>New box</b>, or point a client at the API.</div></div>
+    <div id="split" title="Drag to resize"></div>
+    <div id="chat">
+      <div id="chatbar">
+        <b style="color:var(--brass);font-family:var(--mono);letter-spacing:2px;font-size:13px">CHAT</b>
+        <select id="mode">
+          <option value="agent">Agent (model)</option>
+          <option value="autopilot">Autopilot (scripted)</option>
+          <option value="manual">Manual (no model)</option>
+        </select>
+        <select id="model" title="Model"></select>
+        <span class="sp"></span>
+        <button id="newchat" type="button">New chat</button>
+      </div>
+      <div id="ts"></div>
+      <div id="compose">
+        <form id="f-agent"><textarea id="msg" rows="2" placeholder="Ask the model to open the box…  (Enter sends)"></textarea>
+          <button class="go">Send</button><button type="button" class="stop" hidden>Stop</button></form>
+        <form id="f-autopilot" hidden><input id="apseed" placeholder="seed (optional)" size="16" autocomplete="off">
+          <button class="go">Run scripted solver</button><button type="button" class="stop" hidden>Stop</button></form>
+        <form id="f-manual" hidden><select id="tool"></select><div id="fields"></div><button class="go">Call</button></form>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let last = 0, paused = false, curBox = '', newest = '';
+
+/* ---------- the box ---------- */
+const dialXY = [[165,340],[320,340],[475,340]];
+function drawBox(v){
+  const open = v && v.lid_open, rel = v && v.released, dr = v && v.drawer_open, ok = v && v.solved;
+  const dials = (v ? v.dials : [0,0,0]).map((p,i)=>{
+    const [x,y]=dialXY[i];
+    let ticks='';
+    for(let k=0;k<10;k++){const a=(k*36-90)*Math.PI/180;
+      ticks+=`<text x="${x+Math.cos(a)*56}" y="${y+Math.sin(a)*56+5}" text-anchor="middle" font-size="14" fill="#B9BEC7" font-family="monospace">${k}</text>`;}
+    return `<g>
+      <circle cx="${x}" cy="${y}" r="40" fill="#2A2F38" stroke="#D9A441" stroke-width="4"/>
+      <circle cx="${x}" cy="${y}" r="30" fill="none" stroke="#D9A441" stroke-width="1.5" stroke-dasharray="3 6"/>
+      ${ticks}
+      <g style="transform-origin:${x}px ${y}px;transform:rotate(${p*36}deg);transition:transform .45s cubic-bezier(.3,1.4,.5,1)">
+        <path d="M${x} ${y} L${x} ${y-32}" stroke="#F1EEE6" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="${x}" cy="${y-32}" r="5" fill="#D9A441"/></g>
+      <circle cx="${x}" cy="${y}" r="7" fill="#D9A441"/>
+      <text x="${x}" y="${y+76}" text-anchor="middle" font-size="15" fill="#D9A441" font-family="monospace" font-weight="700">${"ABC"[i]}</text>
+    </g>`;}).join('');
+  const drawer = `<g style="transform:translateY(${dr?0:-46}px);transition:transform .5s ease">
+      <rect x="150" y="426" width="340" height="36" rx="6" fill="#2A2F38" stroke="#D9A441" stroke-width="3"/>
+      ${dr && v.card ? `<rect x="215" y="432" width="210" height="24" rx="3" fill="#D9A441"/><text x="320" y="450" text-anchor="middle" font-family="monospace" font-size="17" font-weight="700" fill="#16191F" letter-spacing="3">${esc(v.card)}</text>`:''}
+    </g>`;
+  return `
+  <defs><filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  ${ok?'<rect x="40" y="130" width="560" height="300" rx="34" fill="none" stroke="#D9A441" stroke-width="3" filter="url(#glow)" opacity=".8"/>':''}
+  ${drawer}
+  <rect x="60" y="150" width="520" height="276" rx="28" fill="#232830" stroke="#D9A441" stroke-width="5"/>
+  <g style="transform-origin:60px 150px;transform:rotate(${open?-38:0}deg);transition:transform .7s ease">
+    <path d="M60 150 V112 Q60 82 100 82 H540 Q580 82 580 112 V150 Z" fill="#2A2F38" stroke="#D9A441" stroke-width="5"/>
+    <rect x="285" y="140" width="70" height="26" rx="8" fill="${rel?'#16191F':'#D9A441'}" stroke="#D9A441" stroke-width="3"/>
+  </g>
+  <rect x="270" y="182" width="100" height="36" rx="8" fill="#16191F" stroke="#D9A441" stroke-width="2"/>
+  ${[0,1,2,3,4,5,6].map(i=>`<circle cx="${285+i*11.7}" cy="200" r="2.6" fill="#D9A441"/>`).join('')}
+  <text x="320" y="236" text-anchor="middle" font-size="12" fill="#B9BEC7" font-family="monospace">grille</text>
+  ${dials}`;
+}
+function chip(t,cls){return `<span class="chip ${cls||''}">${t}</span>`}
+async function pollBox(){
+  try{
+    const id = $('#follow').checked ? newest : $('#boxsel').value;
+    let v = null;
+    if(id){ const r = await fetch(`api/boxes/${encodeURIComponent(id)}?reveal=${$('#reveal').checked?1:0}`); if(r.ok) v = await r.json(); }
+    $('#svg').innerHTML = drawBox(v);
+    if(!v){ $('#chips').innerHTML=chip('no box on the table yet'); $('#says').textContent=''; $('#secret').textContent=''; return; }
+    curBox = v.box_id;
+    $('#chips').innerHTML = chip(v.box_id) + chip('moves '+v.moves) +
+      chip(v.released?'latch released':'latched', v.released?'on':'') +
+      chip(v.lid_open?'lid open':'lid closed', v.lid_open?'on':'') +
+      (v.damage?chip('forced '+v.damage,'bad'):'') + (v.solved?chip('SOLVED','on'):'');
+    $('#says').textContent = v.final || '';
+    $('#secret').textContent = v.secret ? `combo ${v.secret.combo.join(' ')} · ${v.secret.stars} stars · word "${v.secret.word}"` : '';
+  }catch(e){}
+}
+async function pollBoxes(){
+  try{
+    const list = await (await fetch('api/boxes')).json();
+    newest = list[0] || '';
+    const sel = $('#boxsel'), keep = sel.value;
+    sel.innerHTML = list.map(b=>`<option>${esc(b)}</option>`).join('');
+    if(!$('#follow').checked && list.includes(keep)) sel.value = keep;
+    else if(list.length) sel.value = curBox && list.includes(curBox) ? curBox : list[0];
+  }catch(e){}
+}
+
+/* ---------- the traffic ---------- */
+function clientName(r){
+  const m = r.req && r.req.params && r.req.params._meta;
+  const ci = m && m['io.modelcontextprotocol/clientInfo'];
+  return ci && ci.name || '';
+}
+function summarizeApi(r){
+  const req = r.req || {}, action = r.name.split('/').pop(), bits = [];
+  if(action==='boxes') return {call:'open_box', args: [req.seed, req.reset && 'reset'].filter(Boolean).join('  ')};
+  if(action==='examine') return {call:'examine', args: ((req.query||{}).path||['box'])[0]};
+  if(action==='query') return {call:'query', args: req.select||''};
+  if(req.target) bits.push(req.target); if(req.verb) bits.push(req.verb);
+  if(req.args) bits.push(JSON.stringify(req.args)); if(req.confirm) bits.push('[confirmed]');
+  return {call: action, args: bits.join('  ')};
+}
+function summarize(r){
+  if(r.method==='api') return summarizeApi(r);
+  const p = (r.req && r.req.params) || {}, a = p.arguments || {};
+  let call = r.method, args = '';
+  if(r.method==='tools/call'){
+    call = p.name;
+    const bits = [];
+    ['path','select','target','verb','seed'].forEach(k=>{ if(a[k]!==undefined) bits.push(k==='verb'||k==='target'||k==='path'||k==='select'||k==='seed'? String(a[k]) : k+'='+a[k]); });
+    if(a.args) bits.push(JSON.stringify(a.args));
+    if(a.reset) bits.push('reset');
+    args = bits.join('  ');
+    if(p.inputResponses) args += '  [answering the server\'s question]';
+  }
+  return {call, args};
+}
+function saidApi(r){
+  const b = r.resp || {};
+  if(b.error) return {t: b.error, err:true};
+  let t = b.text || '';
+  if(t.startsWith('{')) t = JSON.stringify(b.data);
+  return {t: t.length>230? t.slice(0,230)+'…' : t, err: !!b.is_error};
+}
+function said(r){
+  if(r.method==='api') return saidApi(r);
+  const res = r.resp && r.resp.result, er = r.resp && r.resp.error;
+  if(er) return {t: `${er.code}: ${er.message}`, err:true};
+  if(res && res.content && res.content[0]) {
+    let t = res.content[0].text || '';
+    if(t.startsWith('{') && res.structuredContent){ t = JSON.stringify(res.structuredContent); }
+    return {t: t.length>230? t.slice(0,230)+'…' : t, err: !!res.isError};
+  }
+  if(res && res.tools) return {t: res.tools.length+' tools: '+res.tools.map(x=>x.name).join(', ')};
+  if(res && res.supportedVersions) return {t: 'supports '+res.supportedVersions.join(', ')};
+  return {t:''};
+}
+function stripMeta(o){
+  if($('#meta').checked) return o;
+  const c = JSON.parse(JSON.stringify(o||null));
+  if(c && c.params && c.params._meta) c.params._meta = '…hidden (tick "show _meta")';
+  return c;
+}
+function renderRow(r){
+  const s = summarize(r), sd = said(r);
+  const hv = (r.req_headers||{}), api = r.method==='api';
+  const era = api ? 'REST' : (hv['Mcp-Protocol-Version']||hv['MCP-Protocol-Version']||'2025 era');
+  const res = api ? null : r.resp && r.resp.result;
+  const flags = [
+    `<span class="badge inst">${esc(r.instance)}</span>`,
+    clientName(r) ? `<span class="badge client">${esc(clientName(r))}</span>` : '',
+    `<span class="badge era">${esc(String(era).slice(0,10))}</span>`,
+    r.status!==200 && r.status!==202 && !(api && r.status===409) ? `<span class="badge bad">HTTP ${r.status}</span>`:'',
+    res && res.resultType==='input_required' ? '<span class="badge pause">input_required</span>':'',
+    res && res.isError || api && r.resp && r.resp.is_error ? '<span class="badge bad">isError</span>':'',
+    api && r.resp && r.resp.needs_confirmation ? '<span class="badge pause">needs_confirmation</span>':'',
+  ].join(' ');
+  const hdr = Object.entries(r.req_headers||{}).map(([k,v])=>`<span class="mh">${esc(k)}</span>: ${esc(v)}`).join('\n');
+  const d = document.createElement('div');
+  d.className = 'row new'; d.dataset.id = r.id;
+  d.innerHTML = `<div class="head"><span class="t">${new Date(r.ts*1000).toLocaleTimeString()}</span>
+      <span class="call">${esc(s.call)}</span><span class="args">${esc(s.args)}</span>
+      <span style="margin-left:auto">${flags}</span></div>
+      ${sd.t?`<div class="said ${sd.err?'err':''}">${esc(sd.t)}</div>`:''}
+      <div class="detail">${api ? `<h3>Request</h3><pre>${esc(r.name)}</pre>` : `<h3>Request headers</h3><pre>${hdr||'(none)'}</pre>`}
+      <h3>Request body</h3><pre>${esc(JSON.stringify(stripMeta(r.req),null,2))}</pre>
+      <h3>Response · ${r.status} · ${r.ms} ms</h3><pre>${esc(JSON.stringify(r.resp,null,2)||'(empty)')}</pre></div>`;
+  d.querySelector('.head').onclick = () => d.classList.toggle('open');
+  return d;
+}
+async function pollTrace(){
+  if(paused) return;
+  try{
+    const box = $('#follow').checked ? '' : $('#boxsel').value;
+    const j = await (await fetch(`api/trace?since=${last}&box=${encodeURIComponent(box)}`)).json();
+    if(j.rows.length){
+      const t = $('#trace'), stick = t.scrollHeight - t.scrollTop - t.clientHeight < 80;
+      if($('#empty')) $('#empty').remove();
+      j.rows.forEach(r=>{ t.appendChild(renderRow(r)); last = Math.max(last, r.id); });
+      while(t.children.length>300) t.removeChild(t.firstChild);
+      if(stick) t.scrollTop = t.scrollHeight;
+    }
+  }catch(e){}
+}
+$('#newbox').onsubmit = async e => {
+  e.preventDefault();
+  const seed = $('#seed').value.trim();
+  const r = await fetch('api/boxes', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(seed?{seed}:{})});
+  if(r.ok){ $('#follow').checked = true; await pollBoxes(); pollBox(); pollTrace(); }
+};
+$('#pause').onclick = () => { paused=!paused; $('#pause').textContent = paused?'Resume':'Pause'; };
+$('#clear').onclick = () => { $('#trace').innerHTML=''; };
+$('#boxsel').onchange = () => { $('#follow').checked=false; $('#trace').innerHTML=''; last=0; };
+$('#follow').onchange = () => { $('#trace').innerHTML=''; last=0; };
+/* ---------- chat pane ---------- */
+let cfg = null, tools = [], convo = [], chatBox = '', jobId = '', nextStep = 0, jobTimer = null;
+const forms = {agent: $('#f-agent'), autopilot: $('#f-autopilot'), manual: $('#f-manual')};
+async function jpost(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  return {ok: r.ok, body: await r.json().catch(()=>({}))};
+}
+function line(cls, html){
+  const d = document.createElement('div'); d.className = 'm ' + cls; d.innerHTML = html;
+  const ts = $('#ts'), stick = ts.scrollHeight - ts.scrollTop - ts.clientHeight < 60;
+  ts.appendChild(d); if(stick) ts.scrollTop = ts.scrollHeight;
+  return d;
+}
+function say(cls, text){ return line(cls, esc(text)); }
+function callText(name, a){
+  a = a || {};
+  const bits = [];
+  ['path','select','target','verb','seed'].forEach(k=>{ if(a[k]!==undefined) bits.push(String(a[k])); });
+  if(a.args) bits.push(JSON.stringify(a.args));
+  if(a.reset) bits.push('reset');
+  if(a.box_id && !bits.length) bits.push(a.box_id);
+  return `<span class="what">called <b>${esc(name)}</b> ${esc(bits.join('  '))}</span>`;
+}
+function toolLine(name, args, text, isErr){
+  const short = text.length > 400 ? text.slice(0,400) + '…' : text;
+  line('tool' + (isErr ? ' err' : ''), `${callText(name, args)}<div class="out">${esc(short)}</div>`);
+}
+function askLine(prompt, onAnswer){
+  const d = line('ask', `<div>The box asks: ${esc(prompt)}</div><button class="yes">Approve</button><button class="no">Decline</button>`);
+  const done = (yes) => { d.querySelectorAll('button').forEach(b=>b.remove()); d.append(yes ? 'You approved.' : 'You declined.'); onAnswer(yes); };
+  d.querySelector('.yes').onclick = () => done(true);
+  d.querySelector('.no').onclick = () => done(false);
+}
+function renderStep(s){
+  if(s.box_id) chatBox = s.box_id;
+  switch(s.kind){
+    case 'tool': toolLine(s.name, s.args, s.text || '', s.is_error); break;
+    case 'ask': askLine(s.prompt, yes => jpost('api/job/answer', {id: jobId, approve: yes})); break;
+    case 'final': say('final', s.text); convo.push({role:'assistant', content: s.text}); break;
+    case 'error': say('error', s.text); break;
+    default: say(s.kind, s.text || '');
+  }
+}
+function setBusy(b){
+  document.querySelectorAll('#compose .go').forEach(x=>x.disabled = b);
+  document.querySelectorAll('#compose .stop').forEach(x=>x.hidden = !b);
+}
+function watch(id){
+  jobId = id; nextStep = 0; setBusy(true);
+  clearInterval(jobTimer);
+  jobTimer = setInterval(async () => {
+    try{
+      const j = await (await fetch(`api/job?id=${jobId}&since=${nextStep}`)).json();
+      if(j.error){ say('error', j.error); clearInterval(jobTimer); setBusy(false); return; }
+      j.steps.forEach(renderStep); nextStep = j.next;
+      if(j.done){ clearInterval(jobTimer); setBusy(false); jobId = ''; }
+    }catch(e){}
+  }, 500);
+}
+async function start(url, body){
+  const r = await jpost(url, body);
+  if(!r.ok){ say('error', r.body.error || 'could not start'); return false; }
+  $('#follow').checked = true;
+  watch(r.body.job); return true;
+}
+document.querySelectorAll('#compose .stop').forEach(b => b.onclick = () => jobId && jpost('api/job/stop', {id: jobId}));
+
+$('#f-agent').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('#msg').value.trim(); if(!text) return;
+  say('user', text); $('#msg').value = '';
+  convo.push({role:'user', content: text});
+  const body = {messages: convo.slice(-20), model: $('#model').value};
+  if(chatBox) body.box_id = chatBox;
+  await start('api/chat', body);
+};
+$('#msg').onkeydown = e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('#f-agent').requestSubmit(); } };
+$('#f-autopilot').onsubmit = async e => {
+  e.preventDefault();
+  const seed = $('#apseed').value.trim();
+  say('user', 'Run the scripted solver' + (seed ? ` (seed ${seed})` : ''));
+  await start('api/autopilot', seed ? {seed} : {});
+};
+
+/* manual mode: a form built from the tool's inputSchema */
+function buildFields(){
+  const t = tools.find(x => x.name === $('#tool').value), box = $('#fields');
+  box.innerHTML = '';
+  if(!t) return;
+  const req = (t.inputSchema.required || []);
+  Object.entries(t.inputSchema.properties || {}).forEach(([k, p]) => {
+    const l = document.createElement('label'), star = req.includes(k) ? ' *' : '';
+    let inp;
+    if(p.type === 'boolean'){ inp = document.createElement('input'); inp.type = 'checkbox'; }
+    else if(p.type === 'object'){ inp = document.createElement('textarea'); inp.rows = 1; inp.placeholder = '{"to": 4}'; }
+    else { inp = document.createElement('input'); inp.type = 'text'; if(k === 'box_id') inp.value = curBox; if(p.default) inp.placeholder = p.default; }
+    inp.dataset.k = k; inp.dataset.type = p.type;
+    l.append(k + star, inp); box.append(l);
+  });
+}
+function manualArgs(){
+  const a = {};
+  for(const el of document.querySelectorAll('#fields [data-k]')){
+    const k = el.dataset.k;
+    if(el.dataset.type === 'boolean'){ if(el.checked) a[k] = true; }
+    else if(el.value.trim() !== ''){
+      if(el.dataset.type === 'object'){ try{ a[k] = JSON.parse(el.value); }catch(e){ throw new Error(`${k} is not valid JSON`); } }
+      else a[k] = el.value.trim();
+    }
+  }
+  return a;
+}
+async function manualCall(tool, args, retry){
+  const r = await jpost('api/call', Object.assign({tool, arguments: args}, retry || {}));
+  const res = r.body;
+  if(res.rpc_error || res.error){ say('error', res.rpc_error ? `${res.rpc_error.code}: ${res.rpc_error.message}` : res.error); return; }
+  const text = (res.content && res.content[0] && res.content[0].text) || '';
+  if(res.resultType === 'input_required'){
+    const key = Object.keys(res.inputRequests || {})[0], q = res.inputRequests[key];
+    askLine((q && q.params && q.params.message) || 'The box asks for confirmation.', yes =>
+      manualCall(tool, args, {requestState: res.requestState, inputResponses: {[key]: {action: yes ? 'accept' : 'decline', content: {proceed: yes}}}}));
+    return;
+  }
+  toolLine(tool, args, text, res.isError);
+  if(res.structuredContent && res.structuredContent.box_id) $('#follow').checked = true;
+}
+$('#tool').onchange = buildFields;
+$('#f-manual').onsubmit = async e => {
+  e.preventDefault();
+  try{ const tool = $('#tool').value, args = manualArgs(); await manualCall(tool, args); }
+  catch(err){ say('error', err.message); }
+};
+
+function showMode(){
+  const m = $('#mode').value;
+  Object.entries(forms).forEach(([k, f]) => f.hidden = k !== m);
+  $('#model').hidden = m !== 'agent';
+  if(m === 'manual') buildFields();
+  if(m === 'agent' && cfg && !cfg.agent.enabled) say('note', 'Agent mode is off: ' + cfg.agent.reason);
+}
+$('#mode').onchange = showMode;
+$('#newchat').onclick = () => { convo = []; chatBox = ''; $('#ts').innerHTML = ''; };
+async function initChat(){
+  try{ cfg = await (await fetch('api/agent/config')).json(); }catch(e){ cfg = {agent:{enabled:false, reason:'could not reach the server'}}; }
+  const a = cfg.agent;
+  $('#model').innerHTML = (a.models || []).map(m => `<option${m === a.default ? ' selected' : ''}>${esc(m)}</option>`).join('');
+  if(!a.enabled){ $('#f-agent').querySelectorAll('textarea,.go').forEach(x => x.disabled = true); }
+  try{ tools = await (await fetch('api/tools')).json(); }catch(e){ tools = []; }
+  $('#tool').innerHTML = tools.map(t => `<option>${esc(t.name)}</option>`).join('');
+  showMode();
+  say('note', 'Agent: a model picks the tools. Autopilot: a fixed script. Manual: you pick the tool. All three call /mcp, so every call appears in the traffic above.');
+}
+initChat();
+
+/* drag the split between traffic and chat */
+$('#split').onmousedown = e => {
+  e.preventDefault();
+  const sec = $('#chat').parentElement, move = ev => {
+    const r = sec.getBoundingClientRect(), h = Math.min(Math.max(r.bottom - ev.clientY, 150), r.height - 160);
+    $('#chat').style.flex = `0 0 ${h}px`;
+  };
+  const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
+  addEventListener('mousemove', move); addEventListener('mouseup', up);
+};
+
+setInterval(pollTrace, 700); setInterval(pollBox, 900); setInterval(pollBoxes, 2500);
+pollTrace(); pollBox(); pollBoxes();
+</script>
+</body>
+</html>

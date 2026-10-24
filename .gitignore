@@ -1,0 +1,8 @@
+/puzzlebox
+/server
+*.db
+*.db-*
+data/*
+!data/.gitkeep
+.idea/
+.env

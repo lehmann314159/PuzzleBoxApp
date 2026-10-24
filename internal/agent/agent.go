@@ -1,0 +1,130 @@
+package agent
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"puzzleboxapp/internal/box"
+)
+
+const maxToolText = 4000
+
+func systemPrompt(boxID string) string {
+	s := "You can operate a brass puzzle box on a table using the tools you are given. " +
+		"Find out how to open it. Say briefly what you try and why. " +
+		"When the box is open, or you cannot make progress, say so plainly."
+	if boxID != "" {
+		s += " The current box_id is " + boxID + ". Pass it to examine, query and act."
+	}
+	return s
+}
+
+// ollamaTools converts MCP tools to Ollama's function-tool format.
+func ollamaTools(list []any) (tools []map[string]any, names []string) {
+	for _, t := range list {
+		tm, _ := t.(map[string]any)
+		name, _ := tm["name"].(string)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+		tools = append(tools, map[string]any{"type": "function", "function": map[string]any{
+			"name": name, "description": tm["description"], "parameters": tm["inputSchema"]}})
+	}
+	return
+}
+
+// Chat runs the model loop: the model picks tools, each runs as a real MCP call, and the answer goes
+// back to the model, until it replies without a tool call or MaxSteps is reached.
+func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Message, boxID string) error {
+	c := m.client("agent-pane")
+	list, err := c.Call(ctx, "tools/list", nil)
+	if err != nil {
+		return fmt.Errorf("could not list tools: %w", err)
+	}
+	rawTools, _ := list["tools"].([]any)
+	tools, names := ollamaTools(rawTools)
+
+	msgs := append([]Message{{Role: "system"}}, history...)
+	for turn := 0; turn < m.MaxSteps; turn++ {
+		msgs[0].Content = systemPrompt(boxID) // small models forget handles, so restate it every turn
+		turnCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+		reply, err := m.Ollama.Chat(turnCtx, model, msgs, tools)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("model call failed: %w", err)
+		}
+		text := strings.TrimSpace(reply.Content)
+		if len(reply.ToolCalls) == 0 {
+			if text == "" {
+				text = "(the model said nothing)"
+			}
+			j.emit(Step{Kind: "final", Text: text})
+			return nil
+		}
+		if text != "" {
+			j.emit(Step{Kind: "model", Text: text})
+		}
+		// Parse each call's arguments now, then send the calls back with object arguments whatever
+		// form they arrived in. A parse error is reported to the model, not silently turned into {}.
+		type pending struct {
+			name string
+			raw  any
+			args map[string]any
+			err  error
+		}
+		calls := make([]pending, len(reply.ToolCalls))
+		sent := make([]ToolCall, len(reply.ToolCalls))
+		for i, tc := range reply.ToolCalls {
+			p := pending{name: tc.Function.Name, raw: tc.Function.Arguments}
+			p.args, p.err = tc.Args()
+			calls[i] = p
+			sent[i] = tc
+			sent[i].Function.Arguments = p.args
+			if p.err != nil {
+				sent[i].Function.Arguments = map[string]any{}
+			}
+		}
+		msgs = append(msgs, Message{Role: "assistant", Content: reply.Content, ToolCalls: sent})
+
+		for _, tc := range calls {
+			name := tc.name
+			out := func(text string, isErr bool, args any) {
+				j.emit(Step{Kind: "tool", Name: name, Args: args, Text: text, IsError: isErr, BoxID: boxID})
+				msgs = append(msgs, Message{Role: "tool", ToolName: name, Content: truncate(text, maxToolText)})
+			}
+			args, argErr := tc.args, tc.err
+			switch {
+			case !contains(names, name):
+				out(fmt.Sprintf("There is no tool called %q. The tools are: %s.", name, strings.Join(names, ", ")), true, tc.raw)
+			case argErr != nil:
+				out("Could not call the tool: "+argErr.Error(), true, tc.raw)
+			default:
+				res, err := m.callTool(ctx, j, c, name, args)
+				switch {
+				case ctx.Err() != nil:
+					return ctx.Err()
+				case err != nil:
+					out("The call failed: "+err.Error(), true, args)
+				default:
+					if id, _ := structured(res)["box_id"].(string); box.IDPattern.MatchString(id) {
+						boxID = id
+					}
+					out(Text(res), IsError(res), args)
+				}
+			}
+		}
+	}
+	return fmt.Errorf("stopped after %d model turns without a final answer", m.MaxSteps)
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
