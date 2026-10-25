@@ -141,9 +141,9 @@ Notes on the design:
 
 `act(box_id, target, verb, args?)` is one tool for every change: turning a dial, releasing the latch, lifting the lid, pulling the
 drawer, speaking a word, forcing the lid. That was a choice, made so the box would behave like a service the model has not been
-told about. The model has to ask what each part accepts, as it would with an API nobody documented. The demo deck says the same
-(the rig slide: the tools are "deliberately generic"). It also makes a good place to look at a tension that real servers face,
-because the alternative is easy to picture: `turn_dial`, `release_latch`, `open_lid`, `force_lid`, `pull_drawer` and `speak`.
+told about. The model has to ask what each part accepts, as it would with an API nobody documented. It also makes a good place to
+look at a tension that real servers face, because the alternative is easy to picture: `turn_dial`, `release_latch`, `open_lid`,
+`force_lid`, `pull_drawer` and `speak`.
 
 | | One generic `act` | One tool per verb |
 | --- | --- | --- |
@@ -175,7 +175,7 @@ What the generic shape cost in this app:
   not mention tool annotations such as `destructiveHint`, so how a client weighs the annotation is not established here.) In our
   test the server's own confirmation fired for `force` anyway, which is the control that does not depend on the client's
   settings.
-- **A defect class that only exists because of the shape.** The QA talk in this deck finds a defect in this server: a call with
+- **A defect class that only exists because of the shape.** An early negative test found a defect in this server: a call with
   no verb returned an unhelpful message and still cost a move. `verb` is a free string, so omitting it is possible. With one tool
   per verb there is no verb to omit. The fix (`ValidateArgs`, in `Service.Act`) is a runtime check standing in for what a schema
   would have done.
@@ -209,7 +209,8 @@ This distinction affects how well a model recovers from its own mistakes.
 | The request is not valid MCP | A JSON-RPC error, no tool result | unknown tool: code `-32602`, HTTP 200; header mismatch: code `-32020`, HTTP 400; unknown method on the modern path: code `-32601`, HTTP 404 |
 
 The first two are both results a model receives, and a model can read them. The third kind is a protocol-level failure, and
-the talk's deck makes the point that models are less likely to recover from those. Putting misuse in the second row
+a model is, in general, less likely to recover from one of those than from a readable result (a common observation; this project did
+not measure it). Putting misuse in the second row
 and listing the valid choices in the text keeps the model in the conversation. *Verified by script, including that the
 "story says no" case is `isError: false` and an unknown tool is a JSON-RPC error.*
 
@@ -299,8 +300,8 @@ integrity protected and treated as attacker-controlled. Two things the page says
 ## 6. The model in the loop
 
 The chat pane shows a different set of problems. A server can be correct and still have a poor conversation with a model. The
-README has the detailed findings (a table of what a 12B model got wrong and what the code does about each); the short version,
-for someone who writes servers:
+README has the detailed findings (a table of what a 12B model got wrong and what the code does about each), and `docs/TESTING.md`
+turns them into principles and a procedure; the short version, for someone who writes servers:
 
 - **Be strict on the server and forgiving in the client.** Small models send an object argument as a JSON string
   (`"{\"to\": 4}"`). The server rejects it and stays strict, because relaxing the server would hide a real bug from every other
@@ -374,4 +375,4 @@ differently.
 | The state is not single-use | script |
 | Claude Code connects, uses 2026-07-28, sends `Mcp-Param-BoxId`, and completes the MRTR round trip | its traffic row on the deployed server (client `claude-code`, `inputResponses` and `requestState` present in the retry), 2026-10-25 |
 | Departures from the spec in section 7 | read from code and the transport page; item 1 also by script, and by an Autopilot run against the default configuration |
-| The 55/55 table and the 2026-10-25 regression | `notes/evidence/` logs in the talk repo (not in this repo); commits `627b1c9`, `e1bb5ba` |
+| The 55/55 table and the 2026-10-25 regression | `docs/evidence/` logs; commits `627b1c9`, `e1bb5ba` |

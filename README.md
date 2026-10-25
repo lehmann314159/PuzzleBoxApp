@@ -9,8 +9,8 @@ One Go server, four layers over one domain core (`internal/box`):
 | MCP | `/mcp` | Spec 2026-07-28, plus a stateless layer for 2025-era clients. MRTR for forcing the lid. |
 | Chat | pane + `/api/chat`, `/api/autopilot`, `/api/call` | Agent (Ollama), Autopilot (scripted), Manual. All three call `/mcp`, so every call shows in the traffic. |
 
-Ported from `../puzzlebox` (Python), which stays as the reference. Same SQLite schema, same tools, same protocol behaviour.
-Two differences: a seed makes a different box than in Python, and the last step of the puzzle changed so that a person can
+This began as a Python prototype, which is not part of this repository. The Go version keeps the prototype's SQLite schema, tools
+and protocol behaviour. Two differences: a seed makes a different box than in Python, and the last step of the puzzle changed so that a person can
 solve it from what the box says (below).
 
 ## The puzzle, for a player
@@ -28,13 +28,12 @@ PORT=9100 go run ./cmd/server          # http://127.0.0.1:9100/
 ```
 
 With Ollama running, Agent mode lists whatever `ollama list` shows. Autopilot and Manual need no model.
-The conformance check against the Python demo: start the server on 9100, then in `../puzzlebox` run
-`python3 demo.py mrtr` and `qa` (`qa` should report 10/10). `demo.py solve` no longer solves this box, because it decodes the
-old shifted-letters card; the Go Autopilot is the solver now.
+Protocol behaviour is checked by `bash docs/verify.sh` (see `docs/HOW-IT-WORKS.md`). The prototype's own solver script no longer
+solves this box, because the last step of the puzzle changed; the Go Autopilot is the solver now.
 
 ## The prompt table (testing the model, not just the server)
 
-`internal/agent/prompttable_test.go` is the table from the QA talk: five prompts, the tool each should reach, and the
+`internal/agent/prompttable_test.go` is a table of prompts (see `docs/TESTING.md`): five prompts, the tool each should reach, and the
 shape of the arguments. A model is not deterministic, so each prompt is run several times and the result is a pass
 rate. Every run gets its own box database, and every question the box asks is declined.
 
@@ -67,7 +66,7 @@ server on 24 to 25 October 2026, so read them as a guide, not a benchmark.
 | --- | --- | --- |
 | Reading is easy, acting is hard | `mistral-small3.2:24b` passed every read prompt (15/15) and none of the write prompts (0/5 each): it declined, or gave up after the box's error message | A different default model (below), and the buttons ask for reads and judgements |
 | Reasoning models are slow | `muse-glimmer` took 50 s to say three words with thinking on, and `qwen3:30b-a3b` took 830 s for 15 runs | `OLLAMA_THINK=off`, passed to Ollama as `think: false` |
-| Small models mangle arguments | An object argument sent as a string (`"{\"to\": 4}"`) turned "Turn dial A to 4" from 5/5 into 0/5 | The agent parses it before the call; the server stays strict, because that strictness is the point of the QA talk |
+| Small models mangle arguments | An object argument sent as a string (`"{\"to\": 4}"`) turned "Turn dial A to 4" from 5/5 into 0/5 | The agent parses it before the call; the server stays strict, because the strictness is what lets the tests see the mistake |
 | Models go in circles | One run made the same call 22 times and got the same answer each time | Nudged on the third repeat, stopped on the fifth with a plain message |
 | Models sometimes say nothing | After a dozen calls a reply came back empty | Asked again twice, then the user is told |
 | The prompt is sensitive | One extra sentence took "Break the lid open" from 10/10 to 0/10; moving a different sentence to the end of the prompt took another row from 0/8 to 8/8 | Run the table before editing `systemPrompt` in `internal/agent/agent.go` |
@@ -104,7 +103,7 @@ box, run it: `PROMPT_TABLE_ONLY` runs a few rows, and the report ends with the t
 | `OLLAMA_THINK` | unset (`off` in compose) | `off` stops a reasoning model thinking before it answers (a thinking model can take 50 s a turn); `on` forces it; unset leaves it to the model. |
 | `MAX_STEPS`, `AGENT_TEMPERATURE` | `60`, `0.1` | Model turns per chat (an open-ended "open the box" can take dozens of moves), and repeatability. A model that repeats one call five times is stopped sooner. |
 | `OLLAMA_CALL_TIMEOUT` | `60s` | One call to the model. A call that stalls is asked again once. Calls normally take under 5 s; raise it for a large or thinking model. |
-| `STRICT_PARAM_HEADERS`, `VALIDATE_ARGS` | `1`, `1` | `STRICT_PARAM_HEADERS=0` accepts a call that omits `Mcp-Param-BoxId` (the spec says to reject it). `VALIDATE_ARGS=0` brings back the defect the QA talk finds. |
+| `STRICT_PARAM_HEADERS`, `VALIDATE_ARGS` | `1`, `1` | `STRICT_PARAM_HEADERS=0` accepts a call that omits `Mcp-Param-BoxId` (the spec says to reject it). `VALIDATE_ARGS=0` brings back an early defect described in `docs/TESTING.md`. |
 
 ## Deploying
 
@@ -126,3 +125,5 @@ web               the page (embedded in the binary)
 
 `docs/HOW-IT-WORKS.md` is a technical walk through the MCP side (wire format, handles, the confirmation round trip, where this
 server departs from the spec). `docs/verify.sh` checks what it says against real servers.
+`docs/TESTING.md` collects what testing this project taught, as principles and a procedure; `docs/STRANGER-TEST.md` is the brief
+for first-time-visitor runs.
