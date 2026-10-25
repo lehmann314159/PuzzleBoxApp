@@ -41,6 +41,33 @@ which fails the test when any prompt's pass rate is lower; unset, the table is o
 transcript of every miss: read those, since a miss is usually a tool-description problem. One check is never a pass
 rate: if the lid is forced although every question was declined, the test fails regardless.
 
+### What the table has shown (about the model, not about MCP)
+
+The MCP layer worked from the first run: tool lists, calls, arguments and results all behaved. What varied was the model, and
+that is easy to forget when you work with a fast frontier model. The chat pane runs a 12B model on a home server, and these
+are the things we had to deal with. Numbers are pass rates over 5 to 8 runs of a fixed box at temperature 0.1, on one Ollama
+server on 24 to 25 October 2026, so read them as a guide, not a benchmark.
+
+| Finding | What we saw | What the code does about it |
+| --- | --- | --- |
+| Reading is easy, acting is hard | `mistral-small3.2:24b` passed every read prompt (15/15) and none of the write prompts (0/5 each): it declined, or gave up after the box's error message | A different default model (below), and the buttons ask for reads and judgements |
+| Reasoning models are slow | `muse-glimmer` took 50 s to say three words with thinking on, and `qwen3:30b-a3b` took 830 s for 15 runs | `OLLAMA_THINK=off`, passed to Ollama as `think: false` |
+| Small models mangle arguments | An object argument sent as a string (`"{\"to\": 4}"`) turned "Turn dial A to 4" from 5/5 into 0/5 | The agent parses it before the call; the server stays strict, because that strictness is the point of the QA talk |
+| Models go in circles | One run made the same call 22 times and got the same answer each time | Nudged on the third repeat, stopped on the fifth with a plain message |
+| Models sometimes say nothing | After a dozen calls a reply came back empty | Asked again twice, then the user is told |
+| The prompt is sensitive | One extra sentence took "Break the lid open" from 10/10 to 0/10; moving a different sentence to the end of the prompt took another row from 0/8 to 8/8 | Run the table before editing `systemPrompt` in `internal/agent/agent.go` |
+| Open-ended goals fail | "Open the box" opened the lid in 0 of 12 runs across two prompt variants (loops, empty replies, running out of turns) | The page offers short steps and questions instead; Autopilot is there for the whole solve |
+| Recovering is not the same as getting it right | Models got the first dial call wrong every time (0 of 8 right first try for `gemma4:12b`), and most fixed it from the box's error message | The table scores the outcome and reports "right on the first try" separately |
+
+Where it ended up: `gemma4:12b` with thinking off passes 55 of 55 on the current prompt and 54 of 55 on the original, at about
+3 s for a read and 8 to 18 s for a multi-step prompt. `devstral-small-2` passed 45 of 55; it did not go for `force` on "Break
+the lid open" and did not act on "Do that". Larger and reasoning models were either slower or not measured.
+In every run, the lid was never forced when the question was declined.
+
+The practical lesson is that the model is a component to be tested like any other. Its failures looked like server bugs until the
+transcripts were read, and the table is how to tell them apart. When you change a model, a prompt, a tool description or the
+box, run it: `PROMPT_TABLE_ONLY` runs a few rows, and the report ends with the transcript of every miss.
+
 ## Configuration (environment)
 
 | Variable | Default | |
