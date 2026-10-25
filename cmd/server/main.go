@@ -49,7 +49,7 @@ func main() {
 	}
 	m := &mcp.Server{
 		Box: a.Box, Store: st, Instance: a.Instance, Secret: secret, Bearer: os.Getenv("MCP_BEARER"),
-		StrictParamHeaders: env("STRICT_PARAM_HEADERS", "0") == "1",
+		StrictParamHeaders: env("STRICT_PARAM_HEADERS", "1") == "1",
 	}
 	for _, o := range strings.Split(os.Getenv("ALLOW_ORIGINS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {

@@ -104,7 +104,7 @@ box, run it: `PROMPT_TABLE_ONLY` runs a few rows, and the report ends with the t
 | `OLLAMA_THINK` | unset (`off` in compose) | `off` stops a reasoning model thinking before it answers (a thinking model can take 50 s a turn); `on` forces it; unset leaves it to the model. |
 | `MAX_STEPS`, `AGENT_TEMPERATURE` | `60`, `0.1` | Model turns per chat (an open-ended "open the box" can take dozens of moves), and repeatability. A model that repeats one call five times is stopped sooner. |
 | `OLLAMA_CALL_TIMEOUT` | `60s` | One call to the model. A call that stalls is asked again once. Calls normally take under 5 s; raise it for a large or thinking model. |
-| `STRICT_PARAM_HEADERS`, `VALIDATE_ARGS` | `0`, `1` | `VALIDATE_ARGS=0` brings back the defect the QA talk finds. |
+| `STRICT_PARAM_HEADERS`, `VALIDATE_ARGS` | `1`, `1` | `STRICT_PARAM_HEADERS=0` accepts a call that omits `Mcp-Param-BoxId` (the spec says to reject it). `VALIDATE_ARGS=0` brings back the defect the QA talk finds. |
 
 ## Deploying
 
@@ -123,3 +123,6 @@ internal/mcp      the MCP adapter, sealed requestState
 internal/agent    MCP client, Ollama client, jobs, autopilot, agent loop, pane endpoints
 web               the page (embedded in the binary)
 ```
+
+`docs/HOW-IT-WORKS.md` is a technical walk through the MCP side (wire format, handles, the confirmation round trip, where this
+server departs from the spec). `docs/verify.sh` checks what it says against real servers.
