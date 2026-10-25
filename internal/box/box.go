@@ -78,7 +78,7 @@ func World(s *State) Node {
 		dials[i] = Node{
 			"id": string("ABC"[i]), "position": p,
 			"description": "A knurled brass wheel, marked 0 through 9. Held to the ear, it ticks when it is in the right place, scratches when it is close, and is silent when it is far.",
-			"_actions":    actions{"turn": "args {to: 0-9} or {by: integer}", "listen": "press an ear against this wheel"},
+			"_actions":    actions{"turn": "args {to: 0-9} or {by: integer}", "listen": "press an ear against this wheel (tick = right, scratch = one step off, silence = farther away)"},
 		}
 	}
 	w := Node{
@@ -90,7 +90,7 @@ func World(s *State) Node {
 			"_actions": actions{}},
 		"dials": dials,
 		"grille": Node{"description": "A small perforated grille on the front. It seems to be waiting for a word.",
-			"_actions": actions{"listen": "listen to what every dial is doing", "speak": "args {word: string}"}},
+			"_actions": actions{"listen": "listen to what every dial is doing (tick = right, scratch = one step off, silence = farther away)", "speak": "args {word: string}"}},
 		"latch": Node{"released": s.Released, "description": "A tiny latch holds the lid down. It resists.",
 			"_actions": actions{"release": "try to free the latch"}},
 		"lid": Node{"open": s.LidOpen, "description": "A hinged brass lid, held by the latch.",
