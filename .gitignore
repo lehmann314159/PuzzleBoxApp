@@ -6,3 +6,4 @@ data/*
 !data/.gitkeep
 .idea/
 .env
+.DS_Store
