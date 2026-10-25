@@ -528,7 +528,7 @@ function showMode(){
 }
 $('#mode').onchange = showMode;
 function greet(){
-  say('note', 'There is a brass box on the table, on the left. Click any part of it (the lid, latch, grille or a dial) to see what it can do and try it yourself. Listen at the grille: a tick means a dial is right, a scratch means it is one step off, and silence means it is farther away. Or ask me here: I can look, listen, and make a move when you say so. The suggestion buttons under this chat are good places to start. To watch the whole thing solved, switch to Autopilot.');
+  say('note', 'There is a brass box on the table, on the left. Your goal: open it, find what it is waiting to hear, and say that word at the grille. Click any part of it (the lid, latch, grille or a dial) to see what it can do and try it yourself. Listen at the grille: a tick means a dial is right, a scratch means it is one step off, and silence means it is farther away. Or ask me here: I can look, listen, and make a move when you say so. The suggestion buttons under this chat are good places to start. To watch the whole thing solved, switch to Autopilot.');
 }
 $('#newchat').onclick = () => { convo = []; chatBox = myBox; lastSug = answeredSug = ''; $('#ts').innerHTML = ''; renderSuggest(); greet(); };
 async function initChat(){

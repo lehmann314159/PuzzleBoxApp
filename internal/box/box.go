@@ -499,7 +499,7 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 			return "The lid is held fast.", false
 		}
 		s.LidOpen = true
-		return "The lid swings up. Under it, flush with the floor of the box, you notice a drawer.", false
+		return "The lid swings up. Under it, flush with the floor of the box, you notice a drawer you could pull.", false
 
 	case t.Kind == "lid" && verb == "force":
 		s.Forced++
