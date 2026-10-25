@@ -84,18 +84,23 @@ func (m *Manager) Autopilot(ctx context.Context, j *Job, seed string) error {
 	base, _ := d["base"].(map[string]any)
 	card, _ := d["card"].(map[string]any)
 	desc, _ := base["description"].(string)
-	cipher, _ := card["text"].(string)
+	list, _ := card["text"].(string)
 	m1 := stars.FindStringSubmatch(desc)
-	if m1 == nil || cipher == "" {
+	if m1 == nil || list == "" {
 		return fmt.Errorf("could not read the stars or the card")
 	}
 	k, _ := strconv.Atoi(m1[1])
-	word := make([]byte, len(cipher))
-	for i := range cipher {
-		word[i] = byte(((int(cipher[i])-'a'-k)%26+26)%26) + 'a'
+	word := ""
+	for _, w := range strings.Split(list, ",") {
+		if w = strings.TrimSpace(w); len(w) == k {
+			word = w
+		}
 	}
-	j.emit(Step{Kind: "note", Text: fmt.Sprintf("The card says %q and the base has %d stars, so the word is %q.", cipher, k, word)})
-	if _, err := act("grille", "speak", map[string]any{"word": string(word)}); err != nil {
+	if word == "" {
+		return fmt.Errorf("no word on the card has %d letters: %q", k, list)
+	}
+	j.emit(Step{Kind: "note", Text: fmt.Sprintf("The base has %d stars and the card lists %q, so the word with %d letters is %q.", k, list, k, word)})
+	if _, err := act("grille", "speak", map[string]any{"word": word}); err != nil {
 		return err
 	}
 	final, err := data("{ solved moves }")

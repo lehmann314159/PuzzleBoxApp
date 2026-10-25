@@ -9,8 +9,16 @@ One Go server, four layers over one domain core (`internal/box`):
 | MCP | `/mcp` | Spec 2026-07-28, plus a stateless layer for 2025-era clients. MRTR for forcing the lid. |
 | Chat | pane + `/api/chat`, `/api/autopilot`, `/api/call` | Agent (Ollama), Autopilot (scripted), Manual. All three call `/mcp`, so every call shows in the traffic. |
 
-Ported from `../puzzlebox` (Python), which stays as the reference. Same SQLite schema, same tools, same error text.
-One difference: a seed makes a different box than in Python.
+Ported from `../puzzlebox` (Python), which stays as the reference. Same SQLite schema, same tools, same protocol behaviour.
+Two differences: a seed makes a different box than in Python, and the last step of the puzzle changed so that a person can
+solve it from what the box says (below).
+
+## The puzzle, for a player
+
+Set the three dials to where each one ticks (the grille lets you listen to all three at once; a scratch means one step away),
+release the latch, open the lid, and pull the drawer. A card lists some words; the underside of the box is stamped with some
+stars. Send the word with that many letters to the grille with `speak`. Forcing the lid is a costly shortcut that tells you
+where a dial belongs.
 
 ## Run locally
 
@@ -21,7 +29,8 @@ PORT=9100 go run ./cmd/server          # http://127.0.0.1:9100/
 
 With Ollama running, Agent mode lists whatever `ollama list` shows. Autopilot and Manual need no model.
 The conformance check against the Python demo: start the server on 9100, then in `../puzzlebox` run
-`python3 demo.py solve`, `mrtr` and `qa` (`qa` should report 10/10).
+`python3 demo.py mrtr` and `qa` (`qa` should report 10/10). `demo.py solve` no longer solves this box, because it decodes the
+old shifted-letters card; the Go Autopilot is the solver now.
 
 ## The prompt table (testing the model, not just the server)
 

@@ -169,3 +169,120 @@ func TestExamineAndQuery(t *testing.T) {
 		t.Fatalf("introspection: %s", r.Text)
 	}
 }
+
+// Every star count from 3 to 8 picks exactly one word on the card, and a box's secret word is the one
+// its stars pick.
+func TestTheStarsPickOneWordOnTheCard(t *testing.T) {
+	words := strings.Split(box.CardText(), ", ")
+	seen := map[int]string{}
+	for _, w := range words {
+		if prev, dup := seen[len(w)]; dup {
+			t.Fatalf("%q and %q both have %d letters", prev, w, len(w))
+		}
+		seen[len(w)] = w
+	}
+	stars := map[int]bool{}
+	for i := 0; i < 500; i++ {
+		_, n, word := box.Secrets("seed-" + strconv.Itoa(i))
+		if len(word) != n || box.WordFor(n) != word || !strings.Contains(box.CardText(), word) {
+			t.Fatalf("seed %d: %d stars, word %q", i, n, word)
+		}
+		stars[n] = true
+	}
+	if len(stars) != len(words) {
+		t.Errorf("only %d of %d star counts came up in 500 boxes", len(stars), len(words))
+	}
+}
+
+// A player with no inside knowledge can solve the last step from what the box says: the stars under the
+// box, the words on the card, and the card's own instruction.
+func TestThePlayerCanPickTheWordFromTheText(t *testing.T) {
+	sv := newService(t)
+	id := open(t, sv, "reader")
+	v, _ := sv.View(id, true)
+	combo := v.Secret["combo"].([3]int)
+	for i, p := range combo {
+		act(t, sv, id, "dials."+string("ABC"[i]), "turn", map[string]any{"to": float64(p)})
+	}
+	for _, step := range [][2]string{{"latch", "release"}, {"lid", "open"}, {"drawer", "pull"}} {
+		act(t, sv, id, step[0], step[1], nil)
+	}
+	base, _ := sv.Examine(id, "base")
+	card, _ := sv.Examine(id, "card")
+	vals := card.Data.(map[string]any)["values"].(map[string]any)
+	if !strings.Contains(fmtAny(vals["inscription"]), "as many letters as the underside has stars") {
+		t.Fatalf("the card does not say what to do: %v", vals)
+	}
+	n, _ := strconv.Atoi(regexp.MustCompile(`(\d+) tiny stars`).FindStringSubmatch(fmtAny(base.Data.(map[string]any)["values"].(map[string]any)["description"]))[1])
+	var word string
+	for _, w := range strings.Split(fmtAny(vals["text"]), ", ") {
+		if len(w) == n {
+			word = w
+		}
+	}
+	if r := act(t, sv, id, "grille", "speak", map[string]any{"word": word}); r.Text != box.Final {
+		t.Fatalf("%q (%d letters) was not accepted: %s", word, n, r.Text)
+	}
+}
+
+func fmtAny(v any) string { s, _ := v.(string); return s }
+
+// The wheel wraps, and so does what it tells you: 9 is one step from 0.
+func TestTheWheelSoundWrapsAround(t *testing.T) {
+	var zero, nine string
+	for i := 0; zero == "" || nine == ""; i++ {
+		seed := "wrap-" + strconv.Itoa(i)
+		if c, _, _ := box.Secrets(seed); c[0] == 0 && zero == "" {
+			zero = seed
+		} else if c[0] == 9 && nine == "" {
+			nine = seed
+		}
+	}
+	listen := func(seed string, pos int) string {
+		s := box.Fresh(seed)
+		s.Dials[0] = pos
+		tg, _ := box.ParseTarget("dials.A")
+		text, _ := box.Apply(s, tg, "listen", nil)
+		return text
+	}
+	if got := listen(zero, 9); !strings.Contains(got, "faint scratch") {
+		t.Errorf("9 next to 0: %s", got)
+	}
+	if got := listen(nine, 0); !strings.Contains(got, "faint scratch") {
+		t.Errorf("0 next to 9: %s", got)
+	}
+	if got := listen(zero, 5); !strings.Contains(got, "silence") {
+		t.Errorf("far away: %s", got)
+	}
+}
+
+func TestTurningADialSaysWhenTheLatchSettlesBack(t *testing.T) {
+	sv := newService(t)
+	id := open(t, sv, "settle")
+	v, _ := sv.View(id, true)
+	for i, p := range v.Secret["combo"].([3]int) {
+		act(t, sv, id, "dials."+string("ABC"[i]), "turn", map[string]any{"to": float64(p)})
+	}
+	if r := act(t, sv, id, "latch", "release", nil); r.Text != "The latch clicks free." {
+		t.Fatalf("latch: %s", r.Text)
+	}
+	if r := act(t, sv, id, "dials.A", "turn", map[string]any{"by": float64(1)}); !strings.Contains(r.Text, "The latch settles back into place.") {
+		t.Errorf("no word about the latch: %s", r.Text)
+	}
+	if r := act(t, sv, id, "dials.A", "turn", map[string]any{"by": float64(1)}); strings.Contains(r.Text, "latch") {
+		t.Errorf("the latch was already seated: %s", r.Text)
+	}
+}
+
+// Speaking before the drawer is open must say there is more to find, not only that the grille is not ready.
+func TestSpeakingTooEarlyPointsBackIntoTheBox(t *testing.T) {
+	sv := newService(t)
+	id := open(t, sv, "early")
+	r := act(t, sv, id, "grille", "speak", map[string]any{"word": "ember"})
+	if !strings.Contains(r.Text, "not seem ready to listen yet") || !strings.Contains(r.Text, "more to show you first") {
+		t.Errorf("reply: %s", r.Text)
+	}
+	if v, _ := sv.View(id, false); v.Solved {
+		t.Error("an early word solved the box")
+	}
+}

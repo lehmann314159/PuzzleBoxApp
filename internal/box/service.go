@@ -191,11 +191,11 @@ func (sv *Service) View(id string, reveal bool) (*View, error) {
 	if err != nil || s == nil {
 		return nil, err
 	}
-	combo, shift, word := Secrets(s.Seed)
+	combo, stars, word := Secrets(s.Seed)
 	v := &View{BoxID: id, Dials: s.Dials, Released: s.Released, LidOpen: s.LidOpen, DrawerOpen: s.DrawerOpen,
 		Solved: s.Solved, Moves: s.Moves, Damage: s.Forced}
 	if s.DrawerOpen {
-		c := Caesar(word, shift)
+		c := CardText()
 		v.Card = &c
 	}
 	if s.Solved {
@@ -203,7 +203,7 @@ func (sv *Service) View(id string, reveal bool) (*View, error) {
 		v.Final = &f
 	}
 	if reveal {
-		v.Secret = map[string]any{"combo": combo, "stars": shift, "word": word}
+		v.Secret = map[string]any{"combo": combo, "stars": stars, "word": word}
 	}
 	return v, nil
 }

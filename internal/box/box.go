@@ -35,26 +35,33 @@ type State struct {
 // Fresh returns a box that has never been touched.
 func Fresh(seed string) *State { return &State{Seed: seed} }
 
-// Secrets derives the combination, the cipher shift and the word from a seed.
-// The same seed always gives the same box. (Not the same box as the Python demo.)
-func Secrets(seed string) (combo [3]int, shift int, word string) {
+// The card in the drawer lists these words. Each has a different number of letters, so the number of
+// stars stamped under the box picks exactly one of them.
+var cardWords = []string{"ember", "lantern", "meridian", "moth", "oak", "quartz"}
+
+// CardText is what the card says: every word, in alphabetical order.
+func CardText() string { return strings.Join(cardWords, ", ") }
+
+// WordFor is the word on the card with this many letters, "" if there is none.
+func WordFor(stars int) string {
+	for _, w := range cardWords {
+		if len(w) == stars {
+			return w
+		}
+	}
+	return ""
+}
+
+// Secrets derives the combination, the number of stars and the word from a seed. The stars are the
+// length of the word. The same seed always gives the same box. (Not the same box as the Python demo.)
+func Secrets(seed string) (combo [3]int, stars int, word string) {
 	h := sha256.Sum256([]byte(seed))
 	r := rand.New(rand.NewPCG(binary.BigEndian.Uint64(h[:8]), binary.BigEndian.Uint64(h[8:16])))
 	for i := range combo {
 		combo[i] = r.IntN(10)
 	}
-	shift = 2 + r.IntN(6)
-	word = words[r.IntN(len(words))]
-	return
-}
-
-// Caesar shifts each lowercase letter forward by k.
-func Caesar(word string, k int) string {
-	b := []byte(word)
-	for i, ch := range b {
-		b[i] = byte((int(ch)-'a'+k)%26) + 'a'
-	}
-	return string(b)
+	word = cardWords[r.IntN(len(cardWords))]
+	return combo, len(word), word
 }
 
 // Node is one object in the world tree. Keys starting with '_' are internal.
@@ -64,24 +71,24 @@ type actions = map[string]string
 
 // World builds the box as a tree of nodes.
 func World(s *State) Node {
-	_, shift, word := Secrets(s.Seed)
+	_, stars, _ := Secrets(s.Seed)
 	dials := make([]Node, 3)
 	for i, p := range s.Dials {
 		dials[i] = Node{
 			"id": string("ABC"[i]), "position": p,
-			"description": "A knurled brass wheel, marked 0 through 9.",
+			"description": "A knurled brass wheel, marked 0 through 9. Held to the ear, it ticks when it is in the right place, scratches when it is close, and is silent when it is far.",
 			"_actions":    actions{"turn": "args {to: 0-9} or {by: integer}", "listen": "press an ear against this wheel"},
 		}
 	}
 	w := Node{
-		"description": "A brass box the size of a loaf of bread. It does not announce what it wants.",
+		"description": "A brass box the size of a loaf of bread. It does not announce what it wants, but it seems to be waiting to hear a word.",
 		"moves":       s.Moves,
 		"damage":      s.Forced,
 		"solved":      s.Solved,
-		"base": Node{"description": fmt.Sprintf("The underside is stamped with %d tiny stars in a row.", shift),
+		"base": Node{"description": fmt.Sprintf("The underside is stamped with %d tiny stars in a row.", stars),
 			"_actions": actions{}},
 		"dials": dials,
-		"grille": Node{"description": "A small perforated grille on the front. It seems to be waiting.",
+		"grille": Node{"description": "A small perforated grille on the front. It seems to be waiting for a word.",
 			"_actions": actions{"listen": "listen to what every dial is doing", "speak": "args {word: string}"}},
 		"latch": Node{"released": s.Released, "description": "A tiny latch holds the lid down. It resists.",
 			"_actions": actions{"release": "try to free the latch"}},
@@ -93,8 +100,8 @@ func World(s *State) Node {
 			"_actions": actions{"pull": "slide the drawer out"}}
 	}
 	if s.DrawerOpen {
-		w["card"] = Node{"description": "A brass card, engraved with a short line of letters.",
-			"text": Caesar(word, shift), "inscription": "Step each letter back by the maker's mark.",
+		w["card"] = Node{"description": "A brass card, engraved with a short list of words.",
+			"text": CardText(), "inscription": "Say the word that has as many letters as the underside has stars.",
 			"_actions": actions{}}
 	}
 	if s.Solved {
@@ -353,11 +360,12 @@ func Resolve(node any, sel []field, path string, errs *[]QueryError) any {
 
 // ---- actions
 
+// sound is what a wheel tells you. The wheel wraps (9 is next to 0), and so does this.
 func sound(pos, want int) string {
-	switch d := pos - want; {
+	switch d := ((pos-want)%10 + 10) % 10; {
 	case d == 0:
 		return "a clean, bright tick"
-	case d == 1 || d == -1:
+	case d == 1 || d == 9:
 		return "a faint scratch"
 	}
 	return "silence"
@@ -421,8 +429,12 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 		} else {
 			return "Turn it how? Give {to: 0-9} or {by: integer}.", true
 		}
+		text := fmt.Sprintf("Dial %s now rests at %d.", name, s.Dials[t.Dial])
+		if s.Released {
+			text += " The latch settles back into place."
+		}
 		s.Released = false // moving a wheel re-seats the latch
-		return fmt.Sprintf("Dial %s now rests at %d.", name, s.Dials[t.Dial]), false
+		return text, false
 
 	case t.Kind == "dial" && verb == "listen":
 		return fmt.Sprintf("Dial %c: %s.", "ABC"[t.Dial], sound(s.Dials[t.Dial], combo[t.Dial])), false
@@ -441,7 +453,7 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 		case said == "":
 			return "You open your mouth, but give it no word.", true
 		case !s.DrawerOpen:
-			return "The grille hums faintly. It does not seem ready to listen yet.", false
+			return "The grille hums faintly. It does not seem ready to listen yet. Perhaps the box has more to show you first.", false
 		case said == word:
 			s.Solved = true
 			return Final, false
@@ -453,7 +465,7 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 			s.Released = true
 			return "The latch clicks free.", false
 		}
-		return "The latch holds. Something inside is not aligned.", false
+		return "The latch holds. The wheels inside are not aligned.", false
 
 	case t.Kind == "lid" && verb == "open":
 		if !s.Released {
