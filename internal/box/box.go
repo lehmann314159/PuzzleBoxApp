@@ -492,7 +492,7 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 			s.Released = true
 			return "The latch clicks free.", false
 		}
-		return "The latch holds. The wheels inside are not aligned.", false
+		return "The latch holds. The wheels inside are not aligned. Listen at the grille to hear how close each one is.", false
 
 	case t.Kind == "lid" && verb == "open":
 		if !s.Released {

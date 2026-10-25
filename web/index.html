@@ -621,7 +621,7 @@ async function openMenu(path, ev){
     });
   });
   menu.append(status);
-  if(!Object.keys(acts).length) menu.insertAdjacentHTML('beforeend', '<div class="st">Nothing to do to this part.</div>');
+  if(!Object.keys(acts).length && !vals.description) menu.insertAdjacentHTML('beforeend', '<div class="st">Nothing to do to this part.</div>');
   if(cfg && cfg.agent && cfg.agent.enabled){
     const a = document.createElement('div'); a.className = 'ask';
     const ab = document.createElement('button'); ab.type = 'button'; ab.textContent = 'Ask the model about this';
