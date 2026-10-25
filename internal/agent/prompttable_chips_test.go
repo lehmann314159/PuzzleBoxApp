@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"puzzleboxapp/internal/agent"
+	"puzzleboxapp/internal/box"
 )
 
 // The buttons the page offers (agent.Suggestions) are rows of the same table, so the prompts a visitor
@@ -88,7 +89,9 @@ func init() {
 				}
 				for _, s := range acts {
 					a := argsOf(s)
-					if a["target"] != "dials.A" || !strings.EqualFold(strings.TrimSpace(strings.ToLower(asString(a["verb"]))), "listen") {
+					// The box accepts "dial.A" as well as "dials.A", so compare what the target means, not how it is spelled.
+					t, ok := box.ParseTarget(asString(a["target"]))
+					if !ok || t.Kind != "dial" || t.Dial != 0 || !strings.EqualFold(strings.TrimSpace(asString(a["verb"])), "listen") {
 						return "did something other than what it had suggested: " + describe([]agent.Step{s})
 					}
 				}
