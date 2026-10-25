@@ -30,8 +30,7 @@ var tools = []map[string]any{
 		"annotations": map[string]any{"readOnlyHint": true}},
 	{"name": "act",
 		"description": "Do something to a part of the box: target, verb, optional args. The verbs each part " +
-			"accepts are shown by examine (or the 'actions' field in query). Changes the box. " +
-			"Example: target 'dials.A', verb 'turn', args {\"to\": 4}.",
+			"accepts are shown by examine (or the 'actions' field in query). Changes the box.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
 			"box_id": boxIDSchema, "target": map[string]any{"type": "string"},
 			"verb": map[string]any{"type": "string"}, "args": map[string]any{"type": "object"}},

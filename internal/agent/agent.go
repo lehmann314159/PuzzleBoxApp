@@ -26,10 +26,7 @@ func systemPrompt(boxID string) string {
 		"When the box is open, or you cannot make progress, say so plainly. " +
 		"If the user tells you to do something to the box, do exactly that, straight away. " +
 		"If the user asks a question, answer it, and do not change the box. " +
-		"If they ask for a next step, suggest one and wait. " +
-		"Say only what a tool result showed: never say you opened, released, pulled, turned or heard anything unless a tool result says so, " +
-		"and quote what the box answered. If you were asked to try several things, make one call for each and report each result as it came. " +
-		"Examining a part is not the same as acting on it."
+		"If they ask for a next step, suggest one and wait."
 	if boxID != "" {
 		s += " The box on the table is " + boxID + ". Pass that box_id to examine, query and act. " +
 			"Do not call open_box unless the user asks for a new box."
