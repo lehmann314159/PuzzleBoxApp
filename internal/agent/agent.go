@@ -16,14 +16,20 @@ const maxToolText = 4000
 const (
 	nudgeAfter  = 3
 	giveUpAfter = 5
+	// A model sometimes answers with nothing at all; it is asked again this many times before the user is told.
+	emptyRetries = 2
 )
 
 func systemPrompt(boxID string) string {
 	s := "You can operate a brass puzzle box on a table using the tools you are given. " +
 		"Find out how to open it. Say briefly what you try and why. " +
-		"When the box is open, or you cannot make progress, say so plainly."
+		"When the box is open, or you cannot make progress, say so plainly. " +
+		"If the user tells you to do something to the box, do exactly that, straight away. " +
+		"If the user asks a question, answer it, and do not change the box. " +
+		"If they ask for a next step, suggest one and wait."
 	if boxID != "" {
-		s += " The current box_id is " + boxID + ". Pass it to examine, query and act."
+		s += " The box on the table is " + boxID + ". Pass that box_id to examine, query and act. " +
+			"Do not call open_box unless the user asks for a new box."
 	}
 	return s
 }
@@ -43,6 +49,39 @@ func ollamaTools(list []any) (tools []map[string]any, names []string) {
 	return
 }
 
+// objectParams lists, for each tool, the parameters its schema says are objects.
+func objectParams(list []any) map[string][]string {
+	out := map[string][]string{}
+	for _, t := range list {
+		tm, _ := t.(map[string]any)
+		name, _ := tm["name"].(string)
+		schema, _ := tm["inputSchema"].(map[string]any)
+		props, _ := schema["properties"].(map[string]any)
+		for param, p := range props {
+			if pm, _ := p.(map[string]any); pm["type"] == "object" {
+				out[name] = append(out[name], param)
+			}
+		}
+	}
+	return out
+}
+
+// asObjects repairs a mistake small models make often: an object argument sent as a string that holds
+// JSON, such as "{\"to\": 4}". The server stays strict; a model client may be forgiving.
+func asObjects(args map[string]any, params []string) map[string]any {
+	for _, k := range params {
+		str, ok := args[k].(string)
+		if !ok {
+			continue
+		}
+		var obj map[string]any
+		if json.Unmarshal([]byte(strings.TrimSpace(str)), &obj) == nil && obj != nil {
+			args[k] = obj
+		}
+	}
+	return args
+}
+
 // Chat runs the model loop: the model picks tools, each runs as a real MCP call, and the answer goes
 // back to the model, until it replies without a tool call or MaxSteps is reached.
 func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Message, boxID string) error {
@@ -53,10 +92,11 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 	}
 	rawTools, _ := list["tools"].([]any)
 	tools, names := ollamaTools(rawTools)
+	objects := objectParams(rawTools)
 
 	msgs := append([]Message{{Role: "system"}}, history...)
 	var lastCall string // the previous call and its answer, to notice a model going round in a circle
-	repeats := 0
+	repeats, empties := 0, 0
 	for turn := 0; turn < m.MaxSteps; turn++ {
 		msgs[0].Content = systemPrompt(boxID) // small models forget handles, so restate it every turn
 		turnCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -68,7 +108,12 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 		text := strings.TrimSpace(reply.Content)
 		if len(reply.ToolCalls) == 0 {
 			if text == "" {
-				text = "(the model said nothing)"
+				if empties++; empties <= emptyRetries {
+					msgs = append(msgs, Message{Role: "user", Content: "You did not say anything. Answer me, or use a tool."})
+					continue
+				}
+				j.emit(Step{Kind: "error", Text: "The model did not answer. Try asking again, in a smaller step."})
+				return nil
 			}
 			j.emit(Step{Kind: "final", Text: text})
 			return nil
@@ -116,6 +161,9 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 				msgs = append(msgs, Message{Role: "tool", ToolName: name, Content: content})
 			}
 			args, argErr := tc.args, tc.err
+			if argErr == nil {
+				args = asObjects(args, objects[name])
+			}
 			switch {
 			case !contains(names, name):
 				out(fmt.Sprintf("There is no tool called %q. The tools are: %s.", name, strings.Join(names, ", ")), true, tc.raw)

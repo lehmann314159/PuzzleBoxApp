@@ -56,7 +56,7 @@ pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-spac
 #empty{color:var(--mute);padding:24px;text-align:center;font-size:15px}
 #split{flex:0 0 7px;cursor:row-resize;background:var(--line);border-top:1px solid #3a414d}
 #split:hover{background:var(--brass)}
-#chat{flex:0 0 44%;min-height:150px;display:flex;flex-direction:column;background:var(--bg)}
+#chat{flex:0 0 52%;min-height:150px;display:flex;flex-direction:column;background:var(--bg)}
 #chatbar{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap;font-size:14px;color:var(--mute)}
 #chatbar .sp{margin-left:auto}
 #ts{flex:1;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
@@ -72,6 +72,11 @@ pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-spac
 .m.ask{align-self:stretch;max-width:100%;background:#2A2618;border:1px solid #F1C27D}
 .m.ask button{margin:8px 8px 0 0}
 .m.ask button.yes{background:var(--brass);color:var(--bg);border-color:var(--brass)}
+.suggest{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.suggest button{border-radius:999px;font-size:13px;padding:4px 12px;color:var(--mute)}
+.suggest button:hover:not(:disabled){color:var(--ink);border-color:var(--brass)}
+.suggest button.follow{color:var(--bg);background:var(--brass);border-color:var(--brass)}
+.suggest button:disabled{opacity:.5;cursor:default}
 #compose{border-top:1px solid var(--line);padding:8px 14px}
 #compose form{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
 #compose textarea{flex:1;min-width:200px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:14px;resize:none}
@@ -112,9 +117,9 @@ pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-spac
       <div id="chatbar">
         <b style="color:var(--brass);font-family:var(--mono);letter-spacing:2px;font-size:13px">CHAT</b>
         <select id="mode">
-          <option value="agent">Agent (model)</option>
-          <option value="autopilot">Autopilot (scripted)</option>
-          <option value="manual">Manual (no model)</option>
+          <option value="agent">Ask the model</option>
+          <option value="autopilot">Autopilot (solves it)</option>
+          <option value="manual">Manual (you pick)</option>
         </select>
         <select id="model" title="Model"></select>
         <span class="sp"></span>
@@ -122,10 +127,11 @@ pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-spac
       </div>
       <div id="ts"></div>
       <div id="compose">
-        <form id="f-agent"><textarea id="msg" rows="2" placeholder="Ask the model to open the box…  (Enter sends)"></textarea>
+        <div id="suggest" class="suggest"></div>
+        <form id="f-agent"><textarea id="msg" rows="2" placeholder="Ask about the box, or tell it what to try…  (Enter sends)"></textarea>
           <button class="go">Send</button><button type="button" class="stop" hidden>Stop</button></form>
         <form id="f-autopilot" hidden><input id="apseed" placeholder="seed (optional)" size="16" autocomplete="off">
-          <button class="go">Run scripted solver</button><button type="button" class="stop" hidden>Stop</button></form>
+          <button class="go">Solve it for me</button><button type="button" class="stop" hidden>Stop</button></form>
         <form id="f-manual" hidden><select id="tool"></select><div id="fields"></div><button class="go">Call</button></form>
       </div>
     </div>
@@ -302,7 +308,11 @@ $('#newbox').onsubmit = async e => {
   e.preventDefault();
   const seed = $('#seed').value.trim();
   const r = await fetch('api/boxes', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(seed?{seed}:{})});
-  if(r.ok){ $('#follow').checked = true; await pollBoxes(); pollBox(); pollTrace(); }
+  if(r.ok){
+    const id = ((await r.json().catch(()=>({}))).data || {}).box_id;
+    if(id) await adoptBox(id); else { $('#follow').checked = true; await pollBoxes(); pollBox(); }
+    pollTrace();
+  }
 };
 $('#pause').onclick = () => { paused=!paused; $('#pause').textContent = paused?'Resume':'Pause'; };
 $('#clear').onclick = () => { $('#trace').innerHTML=''; };
@@ -310,6 +320,24 @@ $('#boxsel').onchange = () => { $('#follow').checked=false; $('#trace').innerHTM
 $('#follow').onchange = () => { $('#trace').innerHTML=''; last=0; };
 /* ---------- chat pane ---------- */
 let cfg = null, tools = [], convo = [], chatBox = '', jobId = '', nextStep = 0, jobTimer = null;
+let myBox = '', suggestions = [], lastSug = '', answeredSug = '';
+/* The page keeps one box per tab, so a visitor can talk about "the box" without asking for one, and a
+   reload comes back to the same box. The chat is told its handle on every message. */
+async function adoptBox(id){
+  myBox = chatBox = id;
+  try{ sessionStorage.setItem('pb_box', id); }catch(e){}
+  $('#follow').checked = false;
+  await pollBoxes();
+  $('#boxsel').value = id; curBox = id;
+  pollBox();
+}
+async function ensureBox(){
+  let id = '';
+  try{ id = sessionStorage.getItem('pb_box') || ''; }catch(e){}
+  if(id){ const r = await fetch('api/boxes/' + encodeURIComponent(id)); if(!r.ok) id = ''; }
+  if(!id){ const r = await jpost('api/boxes', {}); id = (r.ok && r.body.data && r.body.data.box_id) || ''; }
+  if(id) await adoptBox(id);
+}
 const forms = {agent: $('#f-agent'), autopilot: $('#f-autopilot'), manual: $('#f-manual')};
 async function jpost(url, body){
   const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
@@ -342,18 +370,19 @@ function askLine(prompt, onAnswer){
   d.querySelector('.no').onclick = () => done(false);
 }
 function renderStep(s){
-  if(s.box_id) chatBox = s.box_id;
+  if(s.box_id && s.box_id !== chatBox){ adoptBox(s.box_id); }
   switch(s.kind){
     case 'tool': toolLine(s.name, s.args, s.text || '', s.is_error); break;
     case 'ask': askLine(s.prompt, yes => jpost('api/job/answer', {id: jobId, approve: yes})); break;
-    case 'final': say('final', s.text); convo.push({role:'assistant', content: s.text}); break;
-    case 'error': say('error', s.text); break;
+    case 'final': say('final', s.text); convo.push({role:'assistant', content: s.text}); answeredSug = lastSug; lastSug = ''; renderSuggest(); break;
+    case 'error': say('error', s.text); lastSug = ''; break;
     default: say(s.kind, s.text || '');
   }
 }
 function setBusy(b){
   document.querySelectorAll('#compose .go').forEach(x=>x.disabled = b);
   document.querySelectorAll('#compose .stop').forEach(x=>x.hidden = !b);
+  document.querySelectorAll('#suggest button').forEach(x=>x.disabled = b);
 }
 function watch(id){
   jobId = id; nextStep = 0; setBusy(true);
@@ -370,25 +399,43 @@ function watch(id){
 async function start(url, body){
   const r = await jpost(url, body);
   if(!r.ok){ say('error', r.body.error || 'could not start'); return false; }
-  $('#follow').checked = true;
+  if(url.includes('autopilot')) $('#follow').checked = true; // it opens a box of its own
   watch(r.body.job); return true;
 }
 document.querySelectorAll('#compose .stop').forEach(b => b.onclick = () => jobId && jpost('api/job/stop', {id: jobId}));
 
-$('#f-agent').onsubmit = async e => {
-  e.preventDefault();
-  const text = $('#msg').value.trim(); if(!text) return;
-  say('user', text); $('#msg').value = '';
+async function sendChat(text, sugId){
+  say('user', text);
   convo.push({role:'user', content: text});
+  lastSug = sugId || ''; answeredSug = ''; renderSuggest();
   const body = {messages: convo.slice(-20), model: $('#model').value};
   if(chatBox) body.box_id = chatBox;
   await start('api/chat', body);
+}
+$('#f-agent').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('#msg').value.trim(); if(!text) return;
+  $('#msg').value = '';
+  await sendChat(text, '');
 };
+/* Buttons: questions and judgements, not single moves. The prompts come from the server. */
+function renderSuggest(){
+  const answered = convo.some(m => m.role === 'assistant');
+  $('#suggest').innerHTML = '';
+  suggestions.filter(g => !g.show || (g.show === 'reply' && answered) || g.show === 'after:' + answeredSug).forEach(g => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = g.label; b.title = g.prompt;
+    if(g.show && g.show.startsWith('after:')) b.className = 'follow';
+    b.disabled = !!jobId;
+    b.onclick = () => sendChat(g.prompt, g.id);
+    $('#suggest').appendChild(b);
+  });
+}
 $('#msg').onkeydown = e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('#f-agent').requestSubmit(); } };
 $('#f-autopilot').onsubmit = async e => {
   e.preventDefault();
   const seed = $('#apseed').value.trim();
-  say('user', 'Run the scripted solver' + (seed ? ` (seed ${seed})` : ''));
+  say('user', 'Solve it for me.' + (seed ? ` (seed ${seed})` : ''));
   await start('api/autopilot', seed ? {seed} : {});
 };
 
@@ -445,11 +492,15 @@ function showMode(){
   const m = $('#mode').value;
   Object.entries(forms).forEach(([k, f]) => f.hidden = k !== m);
   $('#model').hidden = m !== 'agent';
+  $('#suggest').hidden = m !== 'agent' || !(cfg && cfg.agent.enabled);
   if(m === 'manual') buildFields();
   if(m === 'agent' && cfg && !cfg.agent.enabled) say('note', 'Agent mode is off: ' + cfg.agent.reason);
 }
 $('#mode').onchange = showMode;
-$('#newchat').onclick = () => { convo = []; chatBox = ''; $('#ts').innerHTML = ''; };
+function greet(){
+  say('note', 'There is a brass box on the table, on the left. Ask me about it, or tell me what to try: I can look, listen, and make a move when you say so. The buttons below are good places to start. To watch the whole thing solved, switch to Autopilot.');
+}
+$('#newchat').onclick = () => { convo = []; chatBox = myBox; lastSug = answeredSug = ''; $('#ts').innerHTML = ''; renderSuggest(); greet(); };
 async function initChat(){
   try{ cfg = await (await fetch('api/agent/config')).json(); }catch(e){ cfg = {agent:{enabled:false, reason:'could not reach the server'}}; }
   const a = cfg.agent;
@@ -457,8 +508,10 @@ async function initChat(){
   if(!a.enabled){ $('#f-agent').querySelectorAll('textarea,.go').forEach(x => x.disabled = true); }
   try{ tools = await (await fetch('api/tools')).json(); }catch(e){ tools = []; }
   $('#tool').innerHTML = tools.map(t => `<option>${esc(t.name)}</option>`).join('');
+  suggestions = cfg.suggestions || [];
+  renderSuggest();
   showMode();
-  say('note', 'Agent: a model picks the tools. Autopilot: a fixed script. Manual: you pick the tool. All three call /mcp, so every call appears in the traffic above.');
+  greet();
 }
 initChat();
 
@@ -474,7 +527,7 @@ $('#split').onmousedown = e => {
 };
 
 setInterval(pollTrace, 700); setInterval(pollBox, 900); setInterval(pollBoxes, 2500);
-pollTrace(); pollBox(); pollBoxes();
+pollTrace(); pollBox(); pollBoxes(); ensureBox();
 </script>
 </body>
 </html>

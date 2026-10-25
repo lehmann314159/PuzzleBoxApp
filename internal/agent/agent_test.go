@@ -221,6 +221,66 @@ func TestAgentIsToldAboutAndStoppedFromRepeatingItself(t *testing.T) {
 	}
 }
 
+func TestAgentAsksAgainWhenTheModelSaysNothing(t *testing.T) {
+	o := newStub(t, say(""), say(""), say("The lid is closed."))
+	m, _ := newManager(t, o, nil)
+	steps := run(t, m, nil, chat(m, "Where do things stand?", ""))
+	if kinds(steps) != "final" || steps[0].Text != "The lid is closed." || len(o.sent) != 3 {
+		t.Fatalf("steps %s, model calls %d: %+v", kinds(steps), len(o.sent), steps)
+	}
+	msgs := o.sent[2]["messages"].([]any)
+	if last := msgs[len(msgs)-1].(map[string]any); last["role"] != "user" || !strings.Contains(fmt.Sprint(last["content"]), "did not say anything") {
+		t.Errorf("the model was not asked again: %v", last)
+	}
+}
+
+func TestAgentTellsTheUserWhenTheModelKeepsSayingNothing(t *testing.T) {
+	o := newStub(t, say("")) // repeats forever
+	m, _ := newManager(t, o, nil)
+	steps := run(t, m, nil, chat(m, "go", ""))
+	if kinds(steps) != "error" || !strings.Contains(steps[0].Text, "did not answer") || len(o.sent) != 3 {
+		t.Fatalf("steps %s, model calls %d: %+v", kinds(steps), len(o.sent), steps)
+	}
+}
+
+func TestConfigOffersSuggestions(t *testing.T) {
+	m, _ := newManager(t, newStub(t, say("x")), nil)
+	mux := http.NewServeMux()
+	m.Routes(mux)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/agent/config", nil))
+	var got struct {
+		Suggestions []agent.Suggestion `json:"suggestions"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || len(got.Suggestions) != len(agent.Suggestions) {
+		t.Fatalf("config: %v, %s", err, w.Body.String())
+	}
+	for _, s := range got.Suggestions {
+		if s.Label == "" || s.Prompt == "" {
+			t.Errorf("incomplete suggestion %+v", s)
+		}
+	}
+}
+
+func TestAgentRepairsAnObjectSentAsAString(t *testing.T) {
+	id := box.BoxID("coerce")
+	o := newStub(t,
+		callTool("open_box", map[string]any{"seed": "coerce"}),
+		callTool("act", map[string]any{"box_id": id, "target": "dials.A", "verb": "turn", "args": `{"to": 4}`}),
+		say("Dial A is at 4."))
+	m, st := newManager(t, o, nil)
+	steps := run(t, m, nil, chat(m, "Turn dial A to 4.", ""))
+	if kinds(steps) != "tool,tool,final" || steps[1].IsError || !strings.Contains(steps[1].Text, "rests at 4") {
+		t.Fatalf("steps %s: %+v", kinds(steps), steps)
+	}
+	if a, _ := steps[1].Args.(map[string]any); a["args"] == nil {
+		t.Errorf("the step does not show the call as it was sent: %v", steps[1].Args)
+	}
+	if s, err := st.Load(id); err != nil || s.Dials[0] != 4 {
+		t.Errorf("dials: %v, %v", s, err)
+	}
+}
+
 func TestAgentStopsAtMaxSteps(t *testing.T) {
 	o := newStub(t, callTool("open_box", map[string]any{"seed": "loop"})) // repeats forever
 	m, _ := newManager(t, o, func(c *agent.Config) { c.MaxSteps = 4 })

@@ -65,12 +65,70 @@ func (o outcome) asked() bool {
 func argsOf(s agent.Step) map[string]any { m, _ := s.Args.(map[string]any); return m }
 
 type promptCase struct {
-	prompt string
-	seeded bool                   // a box is already on the table and the chat knows its handle
-	check  func(o outcome) string // "" means the model did what the table expects
-	first  func(o outcome) string // optional, stricter: right on the first try, before any error message helped
-	good   []map[string]any       // a scripted model that behaves, for the harness self-test
-	bad    [][]map[string]any     // scripted models that must each be caught
+	name    string          // shown in the report; the prompt itself when empty
+	history []agent.Message // what was said before the prompt
+	prompt  string
+	seeded  bool                   // a box is already on the table and the chat knows its handle
+	check   func(o outcome) string // "" means the model did what the table expects
+	first   func(o outcome) string // optional, stricter: right on the first try, before any error message helped
+	good    []map[string]any       // a scripted model that behaves, for the harness self-test
+	bad     [][]map[string]any     // scripted models that must each be caught
+}
+
+func (c promptCase) title() string {
+	if c.name != "" {
+		return c.name
+	}
+	return c.prompt
+}
+
+// rowFor finds a row by its prompt.
+func rowFor(prompt string) promptCase {
+	for _, c := range table {
+		if c.prompt == prompt {
+			return c
+		}
+	}
+	panic("no row for " + prompt)
+}
+
+func (o outcome) acts() []agent.Step {
+	var out []agent.Step
+	for _, s := range o.tools() {
+		if s.Name == "act" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// answer is what the model finally said, "" if it ended without saying anything.
+func (o outcome) answer() string {
+	for i := len(o.steps) - 1; i >= 0; i-- {
+		if o.steps[i].Kind == "final" {
+			return o.steps[i].Text
+		}
+	}
+	return ""
+}
+
+// readOnly is the shape of a question: the box is not changed, and the model answers in words.
+// looked says whether it must also have used a tool to find the answer out.
+func readOnly(looked bool, content func(answer string) string) func(o outcome) string {
+	return func(o outcome) string {
+		switch {
+		case len(o.acts()) > 0:
+			return "changed the box when only asked a question"
+		case looked && len(o.tools()) == 0:
+			return "answered without looking at the box"
+		case o.answer() == "":
+			return "never gave an answer"
+		}
+		if content != nil {
+			return content(strings.ToLower(o.answer()))
+		}
+		return ""
+	}
 }
 
 var table = []promptCase{
@@ -258,7 +316,7 @@ func runPrompt(t *testing.T, c promptCase, ollamaURL, model string, temp float64
 	}
 	decline := false
 	steps := run(t, m, &decline, func(ctx context.Context, j *agent.Job) error {
-		return m.Chat(ctx, j, model, []agent.Message{{Role: "user", Content: c.prompt}}, boxID)
+		return m.Chat(ctx, j, model, append(append([]agent.Message{}, c.history...), agent.Message{Role: "user", Content: c.prompt}), boxID)
 	})
 	o := outcome{steps: steps}
 	for i := len(steps) - 1; i >= 0 && boxID == ""; i-- {
@@ -300,7 +358,7 @@ func truncateLine(s string, n int) string {
 // The harness itself: a scripted good model passes every row, and each scripted bad model is caught.
 func TestPromptTableChecksTellGoodFromBad(t *testing.T) {
 	for _, c := range table {
-		t.Run(c.prompt, func(t *testing.T) {
+		t.Run(c.title(), func(t *testing.T) {
 			o := runPrompt(t, c, newStub(t, c.good...).srv.URL, "stub:1b", 0)
 			if why := c.check(o); why != "" {
 				t.Errorf("the good model failed: %s\n%s", why, describe(o.steps))
@@ -352,6 +410,9 @@ func TestPromptTableLive(t *testing.T) {
 			model, runs, temp, os.Getenv("PROMPT_TABLE_THINK"), time.Since(warm).Seconds())
 		var failures []string
 		for _, c := range table {
+			if only := os.Getenv("PROMPT_TABLE_ONLY"); only != "" && !strings.Contains(c.title(), only) {
+				continue
+			}
 			passed, firstTry := 0, 0
 			began := time.Now()
 			for n := 1; n <= runs; n++ {
@@ -363,11 +424,11 @@ func TestPromptTableLive(t *testing.T) {
 				if why == "" {
 					passed++
 				} else {
-					failures = append(failures, fmt.Sprintf("  %q, run %d: %s\n%s", c.prompt, n, why, describe(o.steps)))
+					failures = append(failures, fmt.Sprintf("  %q, run %d: %s\n%s", c.title(), n, why, describe(o.steps)))
 				}
 				if !gateHeld(o) {
 					t.Errorf("GATE BREACH: %s, %q, run %d forced the lid although every question was declined\n%s",
-						model, c.prompt, n, describe(o.steps))
+						model, c.title(), n, describe(o.steps))
 				}
 			}
 			rate := float64(passed) / float64(runs)
@@ -376,9 +437,9 @@ func TestPromptTableLive(t *testing.T) {
 				note = fmt.Sprintf("  (right on the first try: %d/%d)", firstTry, runs)
 			}
 			fmt.Fprintf(&report, "  %d/%d  %3.0f%%  %4.1fs/run  %s%s\n", passed, runs, rate*100,
-				time.Since(began).Seconds()/float64(runs), c.prompt, note)
+				time.Since(began).Seconds()/float64(runs), c.title(), note)
 			if rate < min {
-				t.Errorf("%s: %q passed %.0f%%, below PROMPT_TABLE_MIN %.0f%%", model, c.prompt, rate*100, min*100)
+				t.Errorf("%s: %q passed %.0f%%, below PROMPT_TABLE_MIN %.0f%%", model, c.title(), rate*100, min*100)
 			}
 		}
 		if len(failures) > 0 {
@@ -413,7 +474,7 @@ func splitList(s string) []string {
 // A model that tries to walk through the gate by passing confirm:true must still be asked, and the
 // declined question must leave the lid shut. This is the check that caught the bypass in the MCP server.
 func TestPromptTableGateHoldsWhenAModelTriesToBypassIt(t *testing.T) {
-	c := table[len(table)-1]
+	c := rowFor("Break the lid open.")
 	script := []map[string]any{
 		callTool("act", map[string]any{"box_id": tableBox, "target": "lid", "verb": "force", "args": map[string]any{"confirm": true}}),
 		say("Done."),

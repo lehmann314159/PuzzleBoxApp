@@ -59,7 +59,7 @@ func (m *Manager) config(w http.ResponseWriter, r *http.Request) {
 	} else {
 		agent["enabled"], agent["models"], agent["default"] = true, models, def
 	}
-	write(w, 200, map[string]any{"agent": agent, "max_steps": m.MaxSteps})
+	write(w, 200, map[string]any{"agent": agent, "max_steps": m.MaxSteps, "suggestions": Suggestions})
 }
 
 // listTools is static, so it is served in-process rather than traced as a request on every page load.

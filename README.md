@@ -36,7 +36,7 @@ PROMPT_TABLE_THINK=off PROMPT_TABLE_URL=http://localhost:11434 PROMPT_TABLE_MODE
   go test ./internal/agent -run PromptTableLive -v -timeout 60m
 ```
 
-Optional: `PROMPT_TABLE_RUNS` (default 5), `PROMPT_TABLE_TEMP` (default 0.1), and `PROMPT_TABLE_MIN` (for example `0.8`,
+Optional: `PROMPT_TABLE_RUNS` (default 5), `PROMPT_TABLE_ONLY` (run only the rows whose name contains this text), `PROMPT_TABLE_THINK` (`off` for a reasoning model), `PROMPT_TABLE_TEMP` (default 0.1), and `PROMPT_TABLE_MIN` (for example `0.8`,
 which fails the test when any prompt's pass rate is lower; unset, the table is only reported). The report ends with the
 transcript of every miss: read those, since a miss is usually a tool-description problem. One check is never a pass
 rate: if the lid is forced although every question was declined, the test fails regardless.
