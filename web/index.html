@@ -25,7 +25,18 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(380px,5fr) 6f
 section{min-height:0;display:flex;flex-direction:column}
 section+section{border-left:1px solid var(--line)}
 h2{margin:0;padding:12px 20px;font-family:var(--mono);font-size:13px;letter-spacing:2.5px;text-transform:uppercase;color:var(--brass);font-weight:600;border-bottom:1px solid var(--line)}
-#boxpane{padding:12px 20px 20px;overflow:auto}
+#boxpane{padding:12px 20px 20px;overflow:auto;position:relative}
+.hit *{fill:transparent;cursor:pointer;pointer-events:all}
+.hit *:hover{fill:rgba(217,164,65,.14)}
+.hint{text-align:center;font-size:13px;color:var(--mute);margin:2px 0 0}
+#partmenu{position:absolute;z-index:5;min-width:230px;max-width:320px;background:var(--panel);border:1px solid var(--brass);border-radius:10px;padding:10px;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:14px}
+#partmenu .mt{font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--brass);margin-bottom:8px}
+#partmenu .row2{display:flex;gap:6px;align-items:center;margin:6px 0;flex-wrap:wrap}
+#partmenu .row2 .d{flex-basis:100%;font-size:12px;color:var(--mute);margin-top:-2px}
+#partmenu input{width:80px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit;font-size:13px}
+#partmenu button.verb{background:var(--brass);color:var(--bg);border-color:var(--brass);font-weight:600}
+#partmenu .ask{margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+#partmenu .st{margin-top:6px;font-size:13px;color:var(--mute)}
 svg{width:100%;max-width:640px;height:auto;display:block;margin:0 auto}
 .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0}
 .chip{font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--mute);background:var(--panel)}
@@ -105,6 +116,8 @@ pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-spac
     <div id="boxpane">
       <svg id="svg" viewBox="0 -30 640 500" role="img" aria-label="The puzzle box as it is on the table right now"></svg>
       <div class="chips" id="chips"></div>
+      <div class="hint">Click a part of the box (the lid, latch, grille or a dial) to see what it can do.</div>
+      <div id="partmenu" hidden></div>
       <div id="says"></div>
       <div id="secret"></div>
     </div>
@@ -140,7 +153,7 @@ pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-spac
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let last = 0, paused = false, curBox = '', newest = '';
+let last = 0, paused = false, curBox = '', newest = '', drawnKey = '';
 
 /* ---------- the box ---------- */
 const dialXY = [[165,340],[320,340],[475,340]];
@@ -177,7 +190,13 @@ function drawBox(v){
   <rect x="270" y="182" width="100" height="36" rx="8" fill="#16191F" stroke="#D9A441" stroke-width="2"/>
   ${[0,1,2,3,4,5,6].map(i=>`<circle cx="${285+i*11.7}" cy="200" r="2.6" fill="#D9A441"/>`).join('')}
   <text x="320" y="236" text-anchor="middle" font-size="12" fill="#B9BEC7" font-family="monospace">grille</text>
-  ${dials}`;
+  ${dials}
+  <g class="hit">
+    <path data-part="lid" d="M60 150 V112 Q60 82 100 82 H540 Q580 82 580 112 V150 Z"><title>Lid: click to see what you can do</title></path>
+    <rect data-part="latch" x="285" y="140" width="70" height="26" rx="8"><title>Latch: click to see what you can do</title></rect>
+    <rect data-part="grille" x="270" y="182" width="100" height="36" rx="8"><title>Grille: click to see what you can do</title></rect>
+    ${dialXY.map(([x,y],i)=>`<circle data-part="dials.${"ABC"[i]}" cx="${x}" cy="${y}" r="44"><title>Dial ${"ABC"[i]}: click to see what you can do</title></circle>`).join('')}
+  </g>`;
 }
 function chip(t,cls){return `<span class="chip ${cls||''}">${t}</span>`}
 async function pollBox(){
@@ -185,7 +204,8 @@ async function pollBox(){
     const id = $('#follow').checked ? newest : $('#boxsel').value;
     let v = null;
     if(id){ const r = await fetch(`api/boxes/${encodeURIComponent(id)}?reveal=${$('#reveal').checked?1:0}`); if(r.ok) v = await r.json(); }
-    $('#svg').innerHTML = drawBox(v);
+    const key = JSON.stringify(v);
+    if(key !== drawnKey){ $('#svg').innerHTML = drawBox(v); drawnKey = key; }
     if(!v){ $('#chips').innerHTML=chip('no box on the table yet'); $('#says').textContent=''; $('#secret').textContent=''; return; }
     curBox = v.box_id;
     $('#chips').innerHTML = chip(v.box_id) + chip('moves '+v.moves) +
@@ -498,7 +518,7 @@ function showMode(){
 }
 $('#mode').onchange = showMode;
 function greet(){
-  say('note', 'There is a brass box on the table, on the left. Ask me about it, or tell me what to try: I can look, listen, and make a move when you say so. The buttons below are good places to start. To watch the whole thing solved, switch to Autopilot.');
+  say('note', 'There is a brass box on the table, on the left. Click any part of it (the lid, latch, grille or a dial) to see what it can do and try it yourself. Or ask me here: I can look, listen, and make a move when you say so. The suggestion buttons under this chat are good places to start. To watch the whole thing solved, switch to Autopilot.');
 }
 $('#newchat').onclick = () => { convo = []; chatBox = myBox; lastSug = answeredSug = ''; $('#ts').innerHTML = ''; renderSuggest(); greet(); };
 async function initChat(){
@@ -514,6 +534,79 @@ async function initChat(){
   greet();
 }
 initChat();
+
+/* Click a part of the box: its menu is built from what the box says it accepts (examine), and a choice goes
+   straight to the REST API, with no model. The chat is told, so it is not left behind. */
+const menu = $('#partmenu');
+function closeMenu(){ menu.hidden = true; menu.innerHTML = ''; }
+const partName = p => p.startsWith('dials.') ? 'dial ' + p.slice(6) : p;
+function argFields(desc){ // "args {to: 0-9} or {by: integer}" -> [{name:'to', type:'0-9'}]
+  const m = /^args\s*\{([^}]*)\}/.exec(desc || ''); if(!m) return null;
+  return m[1].split(',').map(x => x.split(':').map(t => t.trim())).filter(a => a[0]).map(([name, type]) => ({name, type: type || 'string'}));
+}
+function noteDirect(path, verb, args, result){
+  const what = `${verb} ${partName(path)}` + (args ? ' ' + JSON.stringify(args) : '');
+  say('note', `You did this yourself: ${what}. The box said: ${result}`);
+  if(curBox === chatBox) convo.push({role:'user', content: `(I did this myself on the box: ${what}. The box said: "${result}")`});
+  lastSug = answeredSug = ''; renderSuggest();
+}
+async function doAct(path, verb, args, confirmed){
+  const body = {target: path, verb}; if(args) body.args = args; if(confirmed) body.confirm = true;
+  const r = await fetch(`api/boxes/${encodeURIComponent(curBox)}/act`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json().catch(() => ({}));
+  if(r.status === 409){
+    menu.innerHTML = `<div class="mt">The box asks</div><div>${esc(j.prompt || 'Are you sure?')}</div>
+      <div class="row2"><button class="verb yes">Approve</button><button class="no">Decline</button></div>`;
+    menu.querySelector('.yes').onclick = () => doAct(path, verb, args, true);
+    menu.querySelector('.no').onclick = () => { noteDirect(path, verb, args, 'You declined, so nothing happened.'); closeMenu(); };
+    return;
+  }
+  noteDirect(path, verb, args, j.text || '(no answer)');
+  closeMenu(); pollBox(); pollTrace();
+}
+async function openMenu(path, ev){
+  if(!curBox) return;
+  const r = await fetch(`api/boxes/${encodeURIComponent(curBox)}/examine?path=${encodeURIComponent(path)}`);
+  const acts = ((await r.json().catch(() => ({}))).data || {}).actions || {};
+  const pane = $('#boxpane'), pr = pane.getBoundingClientRect();
+  menu.style.left = Math.max(0, Math.min(ev.clientX - pr.left + pane.scrollLeft, pr.width - 340)) + 'px';
+  menu.style.top = (ev.clientY - pr.top + pane.scrollTop + 10) + 'px';
+  menu.innerHTML = `<div class="mt">${esc(partName(path))}</div>`;
+  Object.entries(acts).forEach(([verb, desc]) => {
+    const fields = argFields(desc), row = document.createElement('div');
+    row.className = 'row2';
+    const inputs = (fields ? fields.slice(0, 1) : []).map(f => {
+      const i = document.createElement('input'); i.placeholder = f.name + (/\d|integer|number/.test(f.type) ? ' (' + f.type + ')' : '');
+      i.dataset.name = f.name; i.dataset.num = /\d|integer|number/.test(f.type) ? '1' : ''; return i;
+    });
+    const b = document.createElement('button'); b.className = 'verb'; b.textContent = verb; b.type = 'button';
+    b.onclick = () => {
+      let args = null;
+      if(inputs.length){
+        const i = inputs[0], raw = i.value.trim(); if(raw === ''){ i.focus(); return; }
+        args = {[i.dataset.name]: i.dataset.num ? Number(raw) : raw};
+      }
+      doAct(path, verb, args, false);
+    };
+    row.append(b, ...inputs);
+    const d = document.createElement('div'); d.className = 'd'; d.textContent = fields ? (desc.replace(/^args\s*/, 'takes ')) : desc; row.append(d);
+    menu.append(row);
+  });
+  if(!Object.keys(acts).length) menu.insertAdjacentHTML('beforeend', '<div class="st">Nothing to do to this part.</div>');
+  if(cfg && cfg.agent && cfg.agent.enabled){
+    const a = document.createElement('div'); a.className = 'ask';
+    const ab = document.createElement('button'); ab.type = 'button'; ab.textContent = 'Ask the model about this';
+    ab.onclick = () => { closeMenu(); $('#mode').value = 'agent'; showMode(); if(!jobId) sendChat(`Tell me about the ${partName(path)}.`, ''); };
+    a.append(ab); menu.append(a);
+  }
+  menu.hidden = false;
+}
+$('#svg').addEventListener('click', e => {
+  const part = e.target.closest && e.target.closest('[data-part]');
+  if(part){ e.stopPropagation(); openMenu(part.dataset.part, e); }
+});
+document.addEventListener('click', e => { if(!menu.hidden && !menu.contains(e.target)) closeMenu(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeMenu(); });
 
 /* drag the split between traffic and chat */
 $('#split').onmousedown = e => {
