@@ -52,7 +52,22 @@ func (t ToolCall) Args() (map[string]any, error) {
 type Ollama struct {
 	URL         string
 	Temperature float64
+	Think       *bool // nil leaves it to the model; false stops a reasoning model from thinking before it answers
 	HTTP        *http.Client
+}
+
+// ParseThink reads OLLAMA_THINK: "0", "false" or "off" turn thinking off, "1", "true" or "on" turn it on,
+// anything else (including empty) leaves the choice to the model.
+func ParseThink(s string) *bool {
+	var v bool
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "0", "false", "off":
+	case "1", "true", "on":
+		v = true
+	default:
+		return nil
+	}
+	return &v
 }
 
 func (o *Ollama) client() *http.Client {
@@ -90,8 +105,12 @@ func (o *Ollama) Chat(ctx context.Context, model string, msgs []Message, tools [
 	var out struct {
 		Message Message `json:"message"`
 	}
-	err := o.do(ctx, "POST", "/api/chat", map[string]any{"model": model, "messages": msgs, "tools": tools,
-		"stream": false, "options": map[string]any{"temperature": o.Temperature}}, &out)
+	body := map[string]any{"model": model, "messages": msgs, "tools": tools,
+		"stream": false, "options": map[string]any{"temperature": o.Temperature}}
+	if o.Think != nil {
+		body["think"] = *o.Think
+	}
+	err := o.do(ctx, "POST", "/api/chat", body, &out)
 	return out.Message, err
 }
 

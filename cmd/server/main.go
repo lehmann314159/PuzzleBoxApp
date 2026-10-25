@@ -72,7 +72,7 @@ func main() {
 	agent.New(agent.Config{
 		SelfURL: "http://127.0.0.1:" + port + "/mcp", Bearer: m.Bearer,
 		OllamaURL: env("OLLAMA_URL", "http://127.0.0.1:11434"), Models: models, DefaultModel: os.Getenv("OLLAMA_MODEL"),
-		MaxSteps: maxSteps, Temperature: temp, Pause: 400 * time.Millisecond, MaxRunning: 2,
+		MaxSteps: maxSteps, Temperature: temp, Think: agent.ParseThink(os.Getenv("OLLAMA_THINK")), Pause: 400 * time.Millisecond, MaxRunning: 2,
 	}).Routes(mux)
 	page := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

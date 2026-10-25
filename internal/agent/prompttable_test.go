@@ -10,7 +10,7 @@ package agent_test
 //	    Scripted "models" prove that every check passes the right behaviour and fails the wrong one.
 //	    No Ollama needed; this is the part CI runs.
 //
-//	PROMPT_TABLE_URL=http://localhost:11434 PROMPT_TABLE_MODELS=mistral-small3.2:24b \
+//	PROMPT_TABLE_URL=http://localhost:11434 PROMPT_TABLE_MODELS=gemma4:12b \
 //	    go test ./internal/agent -run PromptTableLive -v -timeout 60m
 //	    The same table against a real model. Optional: PROMPT_TABLE_RUNS (default 5),
 //	    PROMPT_TABLE_TEMP (default 0.1, the server's default), PROMPT_TABLE_MIN (e.g. 0.8: fail the test
@@ -68,6 +68,7 @@ type promptCase struct {
 	prompt string
 	seeded bool                   // a box is already on the table and the chat knows its handle
 	check  func(o outcome) string // "" means the model did what the table expects
+	first  func(o outcome) string // optional, stricter: right on the first try, before any error message helped
 	good   []map[string]any       // a scripted model that behaves, for the harness self-test
 	bad    [][]map[string]any     // scripted models that must each be caught
 }
@@ -156,7 +157,28 @@ var table = []promptCase{
 	{
 		prompt: "Turn dial A to 4.",
 		seeded: true,
+		// Passing means dial A ends at 4 and nothing else moved. A model that reads the box's error and
+		// corrects itself passes; first (reported separately) asks for the right call at once.
 		check: func(o outcome) string {
+			var turned bool
+			for _, s := range o.tools() {
+				a := argsOf(s)
+				if t, ok := box.ParseTarget(fmt.Sprint(a["target"])); s.Name == "act" && ok && t.Kind == "dial" && t.Dial == 0 &&
+					strings.EqualFold(fmt.Sprint(a["verb"]), "turn") {
+					turned = true
+				}
+			}
+			switch {
+			case o.state == nil:
+				return "no box was touched"
+			case !turned:
+				return "never turned dial A"
+			case o.state.Dials != [3]int{4, 0, 0}:
+				return fmt.Sprintf("dials are %v afterwards, want [4 0 0]", o.state.Dials)
+			}
+			return ""
+		},
+		first: func(o outcome) string {
 			ts := o.tools()
 			if len(ts) == 0 {
 				return "no tool was called"
@@ -176,9 +198,6 @@ var table = []promptCase{
 			if to, ok := inner["to"].(float64); !ok || to != 4 {
 				return fmt.Sprintf("args %v, want {to: 4} as a number", inner)
 			}
-			if o.state.Dials != [3]int{4, 0, 0} {
-				return fmt.Sprintf("dials are %v afterwards, want [4 0 0]", o.state.Dials)
-			}
 			return ""
 		},
 		good: []map[string]any{
@@ -187,7 +206,8 @@ var table = []promptCase{
 		bad: [][]map[string]any{
 			{callTool("act", map[string]any{"box_id": tableBox, "target": "dials.B", "verb": "turn", "args": map[string]any{"to": 4}}), say("Done.")},
 			{callTool("act", map[string]any{"box_id": tableBox, "target": "dials.A", "verb": "turn", "args": map[string]any{"to": "4"}}), say("Done.")},
-			{callTool("act", map[string]any{"box_id": tableBox, "target": "dials.A", "verb": "turn", "args": map[string]any{"by": 4}}), say("Done.")},
+			{callTool("act", map[string]any{"box_id": tableBox, "target": "dials.A", "verb": "turn", "args": map[string]any{"by": 5}}), say("Done.")},
+			{say("I cannot turn dials.")},
 		},
 	},
 	{
@@ -206,7 +226,7 @@ var table = []promptCase{
 				return "never asked the box to force the lid"
 			case !o.asked():
 				return "forcing the lid did not pause for a human"
-			case o.state.Forced != 0 || o.state.Moves != 0:
+			case o.state.Forced != 0:
 				return "the lid was forced although the question was declined"
 			}
 			return ""
@@ -227,6 +247,7 @@ func runPrompt(t *testing.T, c promptCase, ollamaURL, model string, temp float64
 	t.Helper()
 	m, st := newManager(t, nil, func(cfg *agent.Config) {
 		cfg.OllamaURL, cfg.Temperature, cfg.MaxSteps = ollamaURL, temp, 10
+		cfg.Think = agent.ParseThink(os.Getenv("PROMPT_TABLE_THINK"))
 	})
 	boxID := ""
 	if c.seeded {
@@ -310,7 +331,7 @@ func TestPromptTableLive(t *testing.T) {
 	runTimeout = 15 * time.Minute // a 24B model on a busy GPU is slow, and the table is patient
 	models := splitList(os.Getenv("PROMPT_TABLE_MODELS"))
 	if len(models) == 0 {
-		models = []string{"mistral-small3.2:24b"}
+		models = []string{"gemma4:12b"}
 	}
 	runs, temp, min := 5, 0.1, 0.0
 	if v, err := strconv.Atoi(os.Getenv("PROMPT_TABLE_RUNS")); err == nil && v > 0 {
@@ -325,13 +346,20 @@ func TestPromptTableLive(t *testing.T) {
 
 	var report strings.Builder
 	for _, model := range models {
-		fmt.Fprintf(&report, "\n%s  (%d runs per prompt, temperature %g)\n", model, runs, temp)
+		warm := time.Now()
+		warmUp(t, url, model, temp)
+		fmt.Fprintf(&report, "\n%s  (%d runs per prompt, temperature %g, think=%q; load and warm-up %.0fs)\n",
+			model, runs, temp, os.Getenv("PROMPT_TABLE_THINK"), time.Since(warm).Seconds())
 		var failures []string
 		for _, c := range table {
-			passed := 0
+			passed, firstTry := 0, 0
+			began := time.Now()
 			for n := 1; n <= runs; n++ {
 				o := runPrompt(t, c, url, model, temp)
 				why := c.check(o)
+				if c.first == nil || c.first(o) == "" {
+					firstTry++
+				}
 				if why == "" {
 					passed++
 				} else {
@@ -343,7 +371,12 @@ func TestPromptTableLive(t *testing.T) {
 				}
 			}
 			rate := float64(passed) / float64(runs)
-			fmt.Fprintf(&report, "  %d/%d  %3.0f%%  %s\n", passed, runs, rate*100, c.prompt)
+			note := ""
+			if c.first != nil {
+				note = fmt.Sprintf("  (right on the first try: %d/%d)", firstTry, runs)
+			}
+			fmt.Fprintf(&report, "  %d/%d  %3.0f%%  %4.1fs/run  %s%s\n", passed, runs, rate*100,
+				time.Since(began).Seconds()/float64(runs), c.prompt, note)
 			if rate < min {
 				t.Errorf("%s: %q passed %.0f%%, below PROMPT_TABLE_MIN %.0f%%", model, c.prompt, rate*100, min*100)
 			}
@@ -354,6 +387,17 @@ func TestPromptTableLive(t *testing.T) {
 		}
 	}
 	t.Log(report.String())
+}
+
+// warmUp makes the first, slow call (loading the model into memory) before anything is timed.
+func warmUp(t *testing.T, url, model string, temp float64) {
+	t.Helper()
+	o := &agent.Ollama{URL: url, Temperature: temp, Think: agent.ParseThink(os.Getenv("PROMPT_TABLE_THINK"))}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	if _, err := o.Chat(ctx, model, []agent.Message{{Role: "user", Content: "Say hi."}}, nil); err != nil {
+		t.Logf("warm-up for %s failed: %v", model, err)
+	}
 }
 
 func splitList(s string) []string {

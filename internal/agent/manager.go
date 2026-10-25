@@ -17,6 +17,7 @@ type Config struct {
 	DefaultModel string
 	MaxSteps     int // model turns per chat; a safety net
 	Temperature  float64
+	Think        *bool
 	Pause        time.Duration // between scripted calls, so an audience can watch the box move
 	MaxRunning   int
 }
@@ -35,7 +36,7 @@ func New(c Config) *Manager {
 	if c.MaxSteps <= 0 {
 		c.MaxSteps = 30
 	}
-	m := &Manager{Config: c, Ollama: &Ollama{URL: c.OllamaURL, Temperature: c.Temperature}}
+	m := &Manager{Config: c, Ollama: &Ollama{URL: c.OllamaURL, Temperature: c.Temperature, Think: c.Think}}
 	m.Jobs.MaxRunning = c.MaxRunning
 	return m
 }

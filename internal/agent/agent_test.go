@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -284,5 +285,17 @@ func TestBusyAndModelChoice(t *testing.T) {
 	defer j.Stop()
 	if _, err := m.Jobs.Start(func(context.Context, *agent.Job) error { return nil }); err != agent.ErrBusy {
 		t.Errorf("second job: %v, want ErrBusy", err)
+	}
+}
+
+func TestParseThink(t *testing.T) {
+	for in, want := range map[string]string{"": "nil", "auto": "nil", "0": "false", "Off": "false", "false": "false", "1": "true", "on": "true"} {
+		got := "nil"
+		if v := agent.ParseThink(in); v != nil {
+			got = fmt.Sprint(*v)
+		}
+		if got != want {
+			t.Errorf("ParseThink(%q) = %s, want %s", in, got, want)
+		}
 	}
 }

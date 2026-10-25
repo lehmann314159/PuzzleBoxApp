@@ -32,7 +32,7 @@ rate. Every run gets its own box database, and every question the box asks is de
 ```
 go test ./internal/agent -run PromptTable            # self-test of the checks, no model needed (CI runs this)
 
-PROMPT_TABLE_URL=http://localhost:11434 PROMPT_TABLE_MODELS=mistral-small3.2:24b \
+PROMPT_TABLE_THINK=off PROMPT_TABLE_URL=http://localhost:11434 PROMPT_TABLE_MODELS=gemma4:12b \
   go test ./internal/agent -run PromptTableLive -v -timeout 60m
 ```
 
@@ -54,6 +54,7 @@ rate: if the lid is forced although every question was declined, the test fails 
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Server-side only; the page cannot change it. |
 | `OLLAMA_MODEL` | first model Ollama lists | Default for Agent mode. |
 | `OLLAMA_MODELS` | whatever Ollama lists | Allow-list for the model picker. |
+| `OLLAMA_THINK` | unset (`off` in compose) | `off` stops a reasoning model thinking before it answers (a thinking model can take 50 s a turn); `on` forces it; unset leaves it to the model. |
 | `MAX_STEPS`, `AGENT_TEMPERATURE` | `30`, `0.1` | Safety net and repeatability. |
 | `STRICT_PARAM_HEADERS`, `VALIDATE_ARGS` | `0`, `1` | `VALIDATE_ARGS=0` brings back the defect the QA talk finds. |
 
@@ -63,7 +64,7 @@ This follows `frontPage/ADDING_A_SERVICE.md`. Port **9100**, subdomain **puzzleb
 
 1. **Image.** Push to GitHub; `.github/workflows/docker-publish.yml` tests, then builds `lehmann314159/puzzlebox`
    for amd64 and arm64 (needs the `DOCKERHUB_TOKEN` secret, as in the other repos).
-2. **Model.** On the gx10: `ollama pull mistral-small3.2:24b`. The container reaches the host's Ollama through
+2. **Model.** On the gx10: `ollama pull gemma4:12b`. The container reaches the host's Ollama through
    `host-gateway:11434`, the same way Terve does, so Ollama must listen beyond localhost (`OLLAMA_HOST=0.0.0.0`).
 3. **Compose.** Copy `docker-compose.yml` and `.env.example` to `~/apps/puzzlebox/`, then:
    ```
