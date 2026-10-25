@@ -118,5 +118,6 @@ def convert(src, note):
 
 note = ("*This copy is formatted for Medium: tables are lists, diagrams and code samples are described in text, and sub-headings are bold lines. The repository has the original, "
         "with tables: https://github.com/lehmann314159/PuzzleBoxApp. File paths in the text refer to that repository.*")
-for name in ['HOW-IT-WORKS.md', 'TESTING.md']:
-    open(f'docs/medium/{name}', 'w').write(convert(f'docs/{name}', note) + '\n')
+OUT = {'HOW-IT-WORKS.md': 'PuzzleBoxMcp-HOW-IT-WORKS.md', 'TESTING.md': 'TESTING.md'}
+for name, target in OUT.items():
+    open(f'docs/medium/{target}', 'w').write(convert(f'docs/{name}', note) + '\n')
