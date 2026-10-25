@@ -3,9 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"puzzleboxapp/internal/box"
 )
@@ -20,18 +20,33 @@ const (
 	emptyRetries = 2
 )
 
-func systemPrompt(boxID string) string {
+func systemPrompt(boxID, notes string) string {
 	s := "You can operate a brass puzzle box on a table using the tools you are given. " +
 		"Find out how to open it. Say briefly what you try and why. " +
 		"When the box is open, or you cannot make progress, say so plainly. " +
 		"If the user tells you to do something to the box, do exactly that, straight away. " +
 		"If the user asks a question, answer it, and do not change the box. " +
 		"If they ask for a next step, suggest one and wait."
+	s += notes // what has been found out so far in this chat, if anything
 	if boxID != "" {
 		s += " The box on the table is " + boxID + ". Pass that box_id to examine, query and act. " +
 			"Do not call open_box unless the user asks for a new box."
 	}
 	return s
+}
+
+// modelReply asks the model, giving it CallTimeout; a model that does not answer in time is asked once more,
+// because a call that takes more than a few seconds is a server that has stalled, not a model that is thinking.
+func (m *Manager) modelReply(ctx context.Context, j *Job, model string, msgs []Message, tools []map[string]any) (Message, error) {
+	for attempt := 1; ; attempt++ {
+		callCtx, cancel := context.WithTimeout(ctx, m.CallTimeout)
+		reply, err := m.Ollama.Chat(callCtx, model, msgs, tools)
+		cancel()
+		if err == nil || ctx.Err() != nil || attempt >= 2 || !errors.Is(err, context.DeadlineExceeded) {
+			return reply, err
+		}
+		j.emit(Step{Kind: "note", Text: fmt.Sprintf("The model did not answer in %s; asking once more.", m.CallTimeout)})
+	}
 }
 
 // ollamaTools converts MCP tools to Ollama's function-tool format.
@@ -94,14 +109,22 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 	tools, names := ollamaTools(rawTools)
 	objects := objectParams(rawTools)
 
+	nb := newNotebook()
+	seedDials := func() {
+		if boxID == "" {
+			return
+		}
+		if res, err := m.callTool(ctx, j, c, "query", map[string]any{"box_id": boxID, "select": "{ dials { id position } }"}); err == nil {
+			nb.seed(res)
+		}
+	}
+	seedDials()
 	msgs := append([]Message{{Role: "system"}}, history...)
 	var lastCall string // the previous call and its answer, to notice a model going round in a circle
 	repeats, empties := 0, 0
 	for turn := 0; turn < m.MaxSteps; turn++ {
-		msgs[0].Content = systemPrompt(boxID) // small models forget handles, so restate it every turn
-		turnCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-		reply, err := m.Ollama.Chat(turnCtx, model, msgs, tools)
-		cancel()
+		msgs[0].Content = systemPrompt(boxID, nb.prompt()) // small models forget handles and what they tried, so restate it every turn
+		reply, err := m.modelReply(ctx, j, model, msgs, tools)
 		if err != nil {
 			return fmt.Errorf("model call failed: %w", err)
 		}
@@ -162,6 +185,9 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 						"Change the call, try something else, or say plainly that you cannot proceed.]", repeats)
 				}
 				msgs = append(msgs, Message{Role: "tool", ToolName: name, Content: content})
+				if a, _ := args.(map[string]any); nb.observe(name, a, text) {
+					j.emit(Step{Kind: "note", Text: "Notes handed to the model: " + strings.Join(nb.lines(), " ")})
+				}
 			}
 			args, argErr := tc.args, tc.err
 			if argErr == nil {
@@ -181,7 +207,10 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 					out("The call failed: "+err.Error(), true, args)
 				default:
 					if id, _ := structured(res)["box_id"].(string); box.IDPattern.MatchString(id) {
-						boxID = id
+						if id != boxID {
+							boxID = id
+							seedDials()
+						}
 					}
 					out(Text(res), IsError(res), args)
 				}

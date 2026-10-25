@@ -15,7 +15,8 @@ type Config struct {
 	OllamaURL    string
 	Models       []string // allow-list; empty means "whatever Ollama reports"
 	DefaultModel string
-	MaxSteps     int // model turns per chat; a safety net
+	MaxSteps     int           // model turns per chat; a safety net
+	CallTimeout  time.Duration // one call to the model; a stalled call is asked again once
 	Temperature  float64
 	Think        *bool
 	Pause        time.Duration // between scripted calls, so an audience can watch the box move
@@ -34,7 +35,10 @@ type Manager struct {
 
 func New(c Config) *Manager {
 	if c.MaxSteps <= 0 {
-		c.MaxSteps = 60
+		c.MaxSteps = 100
+	}
+	if c.CallTimeout <= 0 {
+		c.CallTimeout = 60 * time.Second
 	}
 	m := &Manager{Config: c, Ollama: &Ollama{URL: c.OllamaURL, Temperature: c.Temperature, Think: c.Think}}
 	m.Jobs.MaxRunning = c.MaxRunning

@@ -92,7 +92,8 @@ box, run it: `PROMPT_TABLE_ONLY` runs a few rows, and the report ends with the t
 | `OLLAMA_MODEL` | first model Ollama lists | Default for Agent mode. |
 | `OLLAMA_MODELS` | whatever Ollama lists | Allow-list for the model picker. |
 | `OLLAMA_THINK` | unset (`off` in compose) | `off` stops a reasoning model thinking before it answers (a thinking model can take 50 s a turn); `on` forces it; unset leaves it to the model. |
-| `MAX_STEPS`, `AGENT_TEMPERATURE` | `60`, `0.1` | Model turns per chat (an open-ended "open the box" can take dozens of moves), and repeatability. A model that repeats one call five times is stopped sooner. |
+| `MAX_STEPS`, `AGENT_TEMPERATURE` | `100`, `0.1` | Model turns per chat (an open-ended "open the box" can take dozens of moves), and repeatability. A model that repeats one call five times is stopped sooner. |
+| `OLLAMA_CALL_TIMEOUT` | `60s` | One call to the model. A call that stalls is asked again once. Calls normally take under 5 s; raise it for a large or thinking model. |
 | `STRICT_PARAM_HEADERS`, `VALIDATE_ARGS` | `0`, `1` | `VALIDATE_ARGS=0` brings back the defect the QA talk finds. |
 
 ## Deploying

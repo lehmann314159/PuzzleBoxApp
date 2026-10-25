@@ -62,7 +62,8 @@ func main() {
 
 	port := env("PORT", "9100")
 	temp, _ := strconv.ParseFloat(env("AGENT_TEMPERATURE", "0.1"), 64)
-	maxSteps, _ := strconv.Atoi(env("MAX_STEPS", "60"))
+	maxSteps, _ := strconv.Atoi(env("MAX_STEPS", "100"))
+	callTimeout, _ := time.ParseDuration(env("OLLAMA_CALL_TIMEOUT", "60s"))
 	var models []string
 	for _, name := range strings.Split(os.Getenv("OLLAMA_MODELS"), ",") {
 		if name = strings.TrimSpace(name); name != "" {
@@ -72,7 +73,7 @@ func main() {
 	agent.New(agent.Config{
 		SelfURL: "http://127.0.0.1:" + port + "/mcp", Bearer: m.Bearer,
 		OllamaURL: env("OLLAMA_URL", "http://127.0.0.1:11434"), Models: models, DefaultModel: os.Getenv("OLLAMA_MODEL"),
-		MaxSteps: maxSteps, Temperature: temp, Think: agent.ParseThink(os.Getenv("OLLAMA_THINK")), Pause: 400 * time.Millisecond, MaxRunning: 2,
+		MaxSteps: maxSteps, CallTimeout: callTimeout, Temperature: temp, Think: agent.ParseThink(os.Getenv("OLLAMA_THINK")), Pause: 400 * time.Millisecond, MaxRunning: 2,
 	}).Routes(mux)
 	page := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

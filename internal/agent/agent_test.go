@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,7 @@ type stubOllama struct {
 	script []map[string]any // each is a "message" object; the last one repeats if the script runs out
 	sent   []map[string]any
 	models []string
+	hang   int // the next this-many chat requests never get an answer (until the client gives up)
 	srv    *httptest.Server
 }
 
@@ -43,11 +45,28 @@ func newStub(t *testing.T, script ...map[string]any) *stubOllama {
 		var req map[string]any
 		json.NewDecoder(r.Body).Decode(&req)
 		s.sent = append(s.sent, req)
+		if s.hang > 0 {
+			s.hang--
+			s.mu.Unlock()
+			select {
+			case <-r.Context().Done():
+			case <-time.After(10 * time.Second):
+			}
+			s.mu.Lock()
+			return
+		}
 		i := min(len(s.sent)-1, len(s.script)-1)
 		json.NewEncoder(w).Encode(map[string]any{"message": s.script[i], "done": true})
 	}))
 	t.Cleanup(s.srv.Close)
 	return s
+}
+
+// calls is how many chat requests the stub has seen, safe to read while a stalled request is still finishing.
+func (s *stubOllama) calls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sent)
 }
 
 func say(text string) map[string]any { return map[string]any{"role": "assistant", "content": text} }
@@ -313,6 +332,59 @@ func TestAgentRepairsAnObjectSentAsAString(t *testing.T) {
 	}
 	if s, err := st.Load(id); err != nil || s.Dials[0] != 4 {
 		t.Errorf("dials: %v, %v", s, err)
+	}
+}
+
+func TestAModelThatStallsIsAskedOnceMore(t *testing.T) {
+	o := newStub(t, say("The lid is closed."))
+	o.hang = 1
+	m, _ := newManager(t, o, func(c *agent.Config) { c.CallTimeout = 150 * time.Millisecond })
+	steps := run(t, m, nil, chat(m, "Where do things stand?", ""))
+	if kinds(steps) != "note,final" || steps[1].Text != "The lid is closed." || o.calls() != 2 {
+		t.Fatalf("steps %s, model calls %d: %+v", kinds(steps), o.calls(), steps)
+	}
+	if !strings.Contains(steps[0].Text, "did not answer in") {
+		t.Errorf("the user was not told: %q", steps[0].Text)
+	}
+}
+
+func TestAModelThatStallsTwiceGivesAClearError(t *testing.T) {
+	o := newStub(t, say("never sent"))
+	o.hang = 5
+	m, _ := newManager(t, o, func(c *agent.Config) { c.CallTimeout = 100 * time.Millisecond })
+	steps := run(t, m, nil, chat(m, "go", ""))
+	last := steps[len(steps)-1]
+	if last.Kind != "error" || !strings.Contains(last.Text, "model call failed") || o.calls() != 2 {
+		t.Fatalf("last %+v, model calls %d", last, o.calls())
+	}
+}
+
+func TestWhatTheModelHasLearnedComesBackInThePrompt(t *testing.T) {
+	id := box.BoxID("notes")
+	o := newStub(t,
+		callTool("open_box", map[string]any{"seed": "notes"}),
+		callTool("act", map[string]any{"box_id": id, "target": "dials.A", "verb": "turn", "args": map[string]any{"to": 3}}),
+		callTool("act", map[string]any{"box_id": id, "target": "dials.A", "verb": "listen"}),
+		say("Done."))
+	m, _ := newManager(t, o, nil)
+	steps := run(t, m, nil, chat(m, "Find where dial A ticks.", ""))
+	first := o.sent[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	last := o.sent[len(o.sent)-1]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if strings.Contains(first, "already found out") {
+		t.Errorf("the first prompt already has notes: %s", first)
+	}
+	if !regexp.MustCompile(`Dial A, positions you have listened at: 3 (silence|scratch|TICK)`).MatchString(last) {
+		t.Errorf("the last prompt does not remember the listen: %s", last)
+	}
+	if steps[len(steps)-1].Kind != "final" {
+		t.Errorf("steps %s", kinds(steps))
+	}
+}
+
+func TestTheDefaultsLeaveRoomToSolveAndStopAHangFast(t *testing.T) {
+	m := agent.New(agent.Config{})
+	if m.MaxSteps != 100 || m.CallTimeout != 60*time.Second {
+		t.Errorf("defaults are %d turns and %v", m.MaxSteps, m.CallTimeout)
 	}
 }
 
