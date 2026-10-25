@@ -200,7 +200,7 @@ costs above are what the position cost here.
 
 ### Two kinds of "no"
 
-This distinction affects how well a model recovers from its own mistakes, so it is spelled out.
+This distinction affects how well a model recovers from its own mistakes.
 
 | What happened | How the server says it | Example |
 | --- | --- | --- |
@@ -321,7 +321,8 @@ for someone who writes servers:
 
 ## 7. What is not in this server, and where it departs from the spec
 
-Be exact about these, because a reader will assume a spec-conformant server is complete.
+This server implements the parts of the 2026-07-28 spec that its four tools need. What follows is what it leaves out or does
+differently.
 
 1. **`Mcp-Param-BoxId` is required, as the spec says.** The spec says a server `MUST` reject a request that omits a recognised
    `Mcp-Param-*` header whose value is in the body. This server rejected a *wrong* value from the start but, until 2026-10-25,
