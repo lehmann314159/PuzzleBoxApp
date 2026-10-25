@@ -469,7 +469,7 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 		said = strings.ToLower(strings.TrimSpace(said))
 		switch {
 		case said == "":
-			return "You open your mouth, but give it no word.", true
+			return "You open your mouth, but give it no word. Give {word: string}.", true
 		case !s.DrawerOpen:
 			return "The grille hums faintly. It does not seem ready to listen yet. Perhaps the box has more to show you first.", false
 		case said == word:

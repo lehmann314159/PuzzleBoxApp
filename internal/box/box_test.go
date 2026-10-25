@@ -368,3 +368,13 @@ func TestAWrongVerbSaysWhereItWorks(t *testing.T) {
 		t.Errorf("release a dial: %s", r.Text)
 	}
 }
+
+// Like a dial that is turned without a number, a grille that is spoken to without a word says what to give.
+func TestSpeakingWithoutAWordSaysWhatToGive(t *testing.T) {
+	sv := newService(t)
+	id := open(t, sv, "noword")
+	r := act(t, sv, id, "grille", "speak", nil)
+	if !r.IsError || !strings.Contains(r.Text, "Give {word: string}.") {
+		t.Errorf("reply: %+v", r)
+	}
+}
