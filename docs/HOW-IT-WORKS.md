@@ -1,6 +1,9 @@
 # How the Puzzle Box works: a technical introduction to MCP, through one small server
 
-This is a tour of a real MCP server of about 3,000 lines of Go (without tests), written for the revision of the spec dated 2026-07-28.
+This is a tour of the MCP side of a small Go application, written for the revision of the spec dated 2026-07-28. The
+application is about 3,000 lines of Go without tests, plus a 650-line web page. The MCP server itself is about 450 of those lines
+(`internal/mcp`). The rest is the puzzle (`internal/box`, about 780), a REST API (265), storage (165), wiring (90) and the chat
+and agent clients (about 1,250).
 It is meant for someone who has used MCP through a client and now wants to know what a server actually does. Everything
 here is about this code. Where a claim is about the protocol, it says which part of the spec it comes from and whether it was
 checked. `docs/verify.sh` runs the behavioural claims against real servers (28 checks, a few seconds once built).
@@ -12,6 +15,22 @@ Spec pages used, all read on 2026-10-25: the [changelog](https://modelcontextpro
 Two clients have been used against it: this repo's own (the agent pane, Autopilot and manual caller) and Claude Code, which
 connected to the deployed server, called its tools and completed the confirmation round trip in section 5. Its traffic row
 shows client name `claude-code`, protocol `2026-07-28` and an `Mcp-Param-BoxId` header on a call that carries a `box_id`.
+
+## Try it
+
+- **The code:** <https://github.com/lehmann314159/PuzzleBoxApp>. The README explains how to run it locally. `docs/verify.sh`
+  checks this paper's behavioural claims against servers it starts itself.
+- **A running copy:** <https://puzzlebox.verynormalserver.com/?t=1ab6d2f37822aa58bd28dd88e287905e36d574c428ed99e9>. It is a
+  brass box on a table, a click menu for each part, a chat that can operate the box, and a panel showing every request as it
+  goes over the wire. Tick "follow latest" to see traffic from other clients, such as Claude Code.
+
+The running copy is a home server with one shared GPU, and it may be offline. The chat uses that GPU, so please keep long runs of
+Autopilot or chat to a minimum. The link carries a shared access token; if it is misused, the token will be changed and the link
+will stop working.
+
+The MCP endpoint of the running copy needs a bearer token that is not published here. To connect an MCP client, run your own copy
+(`go run ./cmd/server`; without `MCP_BEARER` set, `/mcp` needs no token) and add it with
+`claude mcp add --transport http puzzlebox http://127.0.0.1:9100/mcp`.
 
 ## 1. The shape of the program
 
@@ -117,6 +136,67 @@ Notes on the design:
 - **Results carry both text and structure.** `content` holds the sentence a model reads; `structuredContent` holds the
   fields a program wants (`box_id`, `moves`). The text is written for the model: "Turn it how? Give {to: 0-9} or {by:
   integer}."
+
+### Why `act` is generic, and what that costs
+
+`act(box_id, target, verb, args?)` is one tool for every change: turning a dial, releasing the latch, lifting the lid, pulling the
+drawer, speaking a word, forcing the lid. That was a choice, made so the box would behave like a service the model has not been
+told about. The model has to ask what each part accepts, as it would with an API nobody documented. The demo deck says the same
+(the rig slide: the tools are "deliberately generic"). It also makes a good place to look at a tension that real servers face,
+because the alternative is easy to picture: `turn_dial`, `release_latch`, `open_lid`, `force_lid`, `pull_drawer` and `speak`.
+
+| | One generic `act` | One tool per verb |
+| --- | --- | --- |
+| Tool list | Four tools, unchanged when the box gains a part | Grows with the service; every change is a new tool |
+| What the model knows before it acts | Almost nothing; it must call `examine` first | The schema says what each tool takes |
+| Argument checking | At runtime, by the server, in prose | By the schema, before the call |
+| Describing risk | One annotation for everything `act` can do | One annotation per tool |
+| Policy by tool name | All changes or none | Per action |
+| Discovery | Part of the interface | Replaced by the tool list |
+
+What the generic shape cost in this app:
+
+- **Argument errors, found only at runtime.** The schema for `act` says `args` is an object. It cannot say that `turn` on a dial
+  needs `to`, an integer from 0 to 9. The README's prompt table records the first dial call wrong in 0 of 8 runs for
+  `gemma4:12b`, with most runs recovering from the box's error message. A `turn_dial` tool with a required `to` would have
+  made that class of failure impossible, not just recoverable.
+- **Risk that cannot be described truthfully.** `act` is annotated `destructiveHint: false`, and it can also force the lid.
+  An annotation on a tool is one claim about everything the tool can do, so for `act` no value is correct. A client that
+  decides whether to ask a person from the annotation sees a harmless tool. Here the server's own confirmation (section 5)
+  covers `force`, which is why the gap did no harm, but the annotation still misdescribes it.
+- **Policy at the wrong grain.** A gateway can allow or block a call using only the `Mcp-Name` header (section 2). With a
+  generic `act` it can block every change or none. To block only `force` it would have to read the body, which is what the
+  headers were meant to avoid. A separate `force_lid` tool could be blocked on its own. The same grain applies on the client
+  side. Claude Code's permission rules for an MCP tool name either a whole server (`mcp__puzzlebox`) or one tool
+  (`mcp__puzzlebox__act`), and its documentation says a settings-file rule for an MCP tool cannot carry a parameter: such a rule
+  is skipped, and matching on a parameter is possible only for a deny rule passed on the command line. So a standing approval
+  for `act` covers `force` as well, and a settings file cannot say "allow `act` but not with verb `force`". (Source: Claude Code's
+  permissions page, read 2026-10-25. The page does not say what the "don't ask again" option stores for an MCP call, and it does
+  not mention tool annotations such as `destructiveHint`, so how a client weighs the annotation is not established here.) In our
+  test the server's own confirmation fired for `force` anyway, which is the control that does not depend on the client's
+  settings.
+- **A defect class that only exists because of the shape.** The QA talk in this deck finds a defect in this server: a call with
+  no verb returned an unhelpful message and still cost a move. `verb` is a free string, so omitting it is possible. With one tool
+  per verb there is no verb to omit. The fix (`ValidateArgs`, in `Service.Act`) is a runtime check standing in for what a schema
+  would have done.
+
+**What it means for QA.** The tension is most visible when you test. With specific tools, a lot of the checking moves into the
+schema and is done before the server sees the call; what is left to test is mostly behaviour. With a generic tool, the schema
+accepts nearly anything, so correctness of the *arguments* becomes something to test, and the subject of the test is partly the
+model. The prompt table in the README exists for this reason: it checks that a prompt led to the right tool, and also to the
+right target, verb and arguments, and it reports a pass rate because the model is not deterministic. The error messages become part
+of the interface and need tests of their own; the ones in the next subsection are checked by `docs/verify.sh`. The generic shape also makes
+the tool descriptions carry more weight: a sentence added to one moved results in the live table (see the 2026-10-25
+regression in section 6). A server with specific tools would have fewer of these failure modes to test, and more tools to
+describe well.
+
+**A middle path.** Keep the reads generic (`examine` and `query` are already read-only and annotated as such), and split changes
+by risk: `act` for ordinary moves and a separate tool for the one destructive move. The model keeps discovery for the common case.
+Annotations, policy and permission prompts get something accurate to work with for the dangerous case. Whether that is worth the
+extra tool depends on how much the server cares about those three, and this demo cares more about the discovery.
+
+This is a comparison from one small app, not a rule. The point is that "four generic tools" is a position on a tradeoff, and the
+costs above are what the position cost here.
 
 ### Two kinds of "no"
 
