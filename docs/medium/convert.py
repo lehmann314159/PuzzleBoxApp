@@ -2,6 +2,32 @@
 import re, sys
 
 AS_LISTS = {
+    'POST /mcp\nMCP-Protocol-Version': [
+        "The request:",
+        "",
+        "- `POST /mcp`",
+        "- Header `MCP-Protocol-Version: 2026-07-28`",
+        "- Header `Mcp-Method: tools/call`",
+        "- Header `Mcp-Name: open_box`",
+        "- Body: a JSON-RPC request with `id` 2 and `method` `tools/call`. Its `params` are `name` `open_box`, `arguments` `{\"seed\": \"doc\"}`, "
+        "and a `_meta` object holding `io.modelcontextprotocol/protocolVersion` set to `2026-07-28` and "
+        "`io.modelcontextprotocol/clientCapabilities` set to `{}`.",
+        "",
+    ],
+    '200 OK\n{"jsonrpc"': [
+        "The response:",
+        "",
+        "- Status `200 OK`",
+        "- Body: a JSON-RPC result with `id` 2 and `resultType` `complete`",
+        "- `content`: one text block, \"A brass box is on the table: box_139d544b82. It is silent.\"",
+        "- `structuredContent`: `{\"box_id\": \"box_139d544b82\"}`",
+        "- `isError`: `false`",
+        "- `_meta`: the server's identity under `io.modelcontextprotocol/serverInfo` (name `puzzlebox`, version `1.0.0`, instance `go1`)",
+        "",
+    ],
+    'PROMPT_TABLE_THINK=off': [
+        "`PROMPT_TABLE_THINK=off PROMPT_TABLE_URL=<ollama url> PROMPT_TABLE_MODELS=gemma4:12b go test ./internal/agent -run PromptTableLive -v -timeout 40m`",
+    ],
     'browser page  ---REST--->': [
         "The pieces fit together like this:",
         "",
@@ -90,7 +116,7 @@ def convert(src, note):
     first_nl = text.index('\n')
     return text[:first_nl] + '\n\n' + note + text[first_nl:]
 
-note = ("*This copy is formatted for Medium: tables are lists, and sub-headings are bold lines. The repository has the original, "
+note = ("*This copy is formatted for Medium: tables are lists, diagrams and code samples are described in text, and sub-headings are bold lines. The repository has the original, "
         "with tables: https://github.com/lehmann314159/PuzzleBoxApp. File paths in the text refer to that repository.*")
 for name in ['HOW-IT-WORKS.md', 'TESTING.md']:
     open(f'docs/medium/{name}', 'w').write(convert(f'docs/{name}', note) + '\n')

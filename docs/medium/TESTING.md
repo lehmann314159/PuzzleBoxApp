@@ -1,6 +1,6 @@
 # Testing an MCP server with an agent in front of it
 
-*This copy is formatted for Medium: tables are lists, and sub-headings are bold lines. The repository has the original, with tables: https://github.com/lehmann314159/PuzzleBoxApp. File paths in the text refer to that repository.*
+*This copy is formatted for Medium: tables are lists, diagrams and code samples are described in text, and sub-headings are bold lines. The repository has the original, with tables: https://github.com/lehmann314159/PuzzleBoxApp. File paths in the text refer to that repository.*
 
 Adding MCP to a system adds a layer where errors can happen. Putting an agent in front of the MCP server adds another, and the
 new layer is not deterministic. This document lists what went wrong while building and testing the Puzzle Box, what found each
@@ -178,10 +178,7 @@ What to run, by what changed. These are the checks this project used, in the ord
 
 The prompt table, for one model:
 
-```
-PROMPT_TABLE_THINK=off PROMPT_TABLE_URL=<ollama url> PROMPT_TABLE_MODELS=gemma4:12b \
-  go test ./internal/agent -run PromptTableLive -v -timeout 40m
-```
+`PROMPT_TABLE_THINK=off PROMPT_TABLE_URL=<ollama url> PROMPT_TABLE_MODELS=gemma4:12b go test ./internal/agent -run PromptTableLive -v -timeout 40m`
 
 When a change makes a row fall:
 1. Read the transcript of the miss.
