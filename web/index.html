@@ -153,7 +153,7 @@ pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;white-spac
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let last = 0, paused = false, curBox = '', newest = '', drawnKey = '';
+let last = 0, paused = false, curBox = '', newest = '', drawnKey = '', ready = false;
 
 /* ---------- the box ---------- */
 const dialXY = [[165,340],[320,340],[475,340]];
@@ -311,7 +311,7 @@ function renderRow(r){
   return d;
 }
 async function pollTrace(){
-  if(paused) return;
+  if(paused || !ready) return; // not before the page has chosen its box, or it would show everyone's history
   try{
     const box = $('#follow').checked ? '' : $('#boxsel').value;
     const j = await (await fetch(`api/trace?since=${last}&box=${encodeURIComponent(box)}`)).json();
@@ -349,14 +349,17 @@ async function adoptBox(id){
   $('#follow').checked = false;
   await pollBoxes();
   $('#boxsel').value = id; curBox = id;
-  pollBox();
+  $('#trace').innerHTML = ''; last = 0; // the traffic pane follows this box only: its own history, nobody else's
+  pollBox(); pollTrace();
 }
 async function ensureBox(){
-  let id = '';
-  try{ id = sessionStorage.getItem('pb_box') || ''; }catch(e){}
-  if(id){ const r = await fetch('api/boxes/' + encodeURIComponent(id)); if(!r.ok) id = ''; }
-  if(!id){ const r = await jpost('api/boxes', {}); id = (r.ok && r.body.data && r.body.data.box_id) || ''; }
-  if(id) await adoptBox(id);
+  try{
+    let id = '';
+    try{ id = sessionStorage.getItem('pb_box') || ''; }catch(e){}
+    if(id){ const r = await fetch('api/boxes/' + encodeURIComponent(id)); if(!r.ok) id = ''; }
+    if(!id){ const r = await jpost('api/boxes', {}); id = (r.ok && r.body.data && r.body.data.box_id) || ''; }
+    if(id) await adoptBox(id);
+  }finally{ ready = true; }
 }
 const forms = {agent: $('#f-agent'), autopilot: $('#f-autopilot'), manual: $('#f-manual')};
 async function jpost(url, body){
@@ -620,7 +623,7 @@ $('#split').onmousedown = e => {
 };
 
 setInterval(pollTrace, 700); setInterval(pollBox, 900); setInterval(pollBoxes, 2500);
-pollTrace(); pollBox(); pollBoxes(); ensureBox();
+pollBox(); pollBoxes(); ensureBox().then(pollTrace);
 </script>
 </body>
 </html>
