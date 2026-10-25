@@ -36,16 +36,15 @@ The MCP endpoint of the running copy needs a bearer token that is not published 
 
 ## 1. The shape of the program
 
-```
-                        +-------------------+
- browser page  ---REST--->  internal/api    |
- (box + traffic)        |                   |
-                        |   box.Service     |---> store (SQLite: boxes, trace)
- any MCP client --/mcp-->  internal/mcp    |
-                        |                   |
- agent pane / Autopilot / manual  --/mcp--->|   (the app's own clients call its own /mcp)
-                        +-------------------+
-```
+The pieces fit together like this:
+
+- The browser page talks REST to `internal/api`. It draws the box, runs the click menus and shows the traffic.
+- Any MCP client talks to `/mcp`, which is `internal/mcp`.
+- The agent pane, Autopilot and the manual caller are also MCP clients: they call this server's own `/mcp`.
+- `internal/api` and `internal/mcp` both call `box.Service`, which reads and writes the store (SQLite: the boxes and the trace).
+
+The packages:
+
 
 - `internal/box` is the domain: what a box is, what each part does, what the sounds mean. It knows nothing about HTTP or MCP.
   Its public face is `box.Service` with four operations, `Open`, `Examine`, `Query`, `Act` (`internal/box/service.go`).
@@ -240,20 +239,16 @@ ordinary tool arguments." That is how this server works.
 This is where MCP's 2026-07-28 shape is most visibly different from earlier revisions, and `internal/mcp/call.go` (`act`) is
 the whole implementation.
 
-```
-client  --> tools/call act {lid, force}
-server  <-- resultType: "input_required"
-            inputRequests: { confirm_force: { method: "elicitation/create",
-                              params: { mode: "form", message: "Forcing the lid may damage the box ... Do it anyway?",
-                                        requestedSchema: { proceed: boolean } } } }
-            requestState: "<opaque token>"
-            (the server has forgotten the request; nothing is waiting)
-client  asks the person, then:
-client  --> tools/call act {lid, force}   (the original call again, plus:)
-            inputResponses: { confirm_force: { action: "accept", content: { proceed: true } } }
-            requestState: "<the same token, unchanged>"
-server  <-- the lid shudders ... (an ordinary result)
-```
+The exchange has five steps:
+
+1. The client sends `tools/call` for `act` with target `lid` and verb `force`.
+2. The server answers with `resultType: "input_required"`. The answer has an `inputRequests` entry named `confirm_force`: an `elicitation/create` form whose message says "Forcing the lid may damage the box ... Do it anyway?" and asks for a boolean `proceed`. It also has a `requestState`, an opaque token. The server has now forgotten the request, and nothing is waiting.
+3. The client asks the person.
+4. The client sends the original call again, adding `inputResponses` with `confirm_force: {action: "accept", content: {proceed: true}}` and the same `requestState`, unchanged.
+5. The server returns an ordinary result: the lid shudders.
+
+What to notice:
+
 
 - **No connection is held open and the server remembers nothing.** In earlier revisions a server asked the client a question
   over a stream and waited. Here the question is the *answer* to the first call, and the client re-sends the original call with

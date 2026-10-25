@@ -1,6 +1,35 @@
 # Regenerates docs/medium/*.md from docs/*.md. Run from the repository root: python3 docs/medium/convert.py
 import re, sys
 
+AS_LISTS = {
+    'browser page  ---REST--->': [
+        "The pieces fit together like this:",
+        "",
+        "- The browser page talks REST to `internal/api`. It draws the box, runs the click menus and shows the traffic.",
+        "- Any MCP client talks to `/mcp`, which is `internal/mcp`.",
+        "- The agent pane, Autopilot and the manual caller are also MCP clients: they call this server's own `/mcp`.",
+        "- `internal/api` and `internal/mcp` both call `box.Service`, which reads and writes the store (SQLite: the boxes and the trace).",
+        "",
+        "The packages:",
+        "",
+    ],
+    'client  --> tools/call act {lid, force}': [
+        "The exchange has five steps:",
+        "",
+        "1. The client sends `tools/call` for `act` with target `lid` and verb `force`.",
+        "2. The server answers with `resultType: \"input_required\"`. The answer has an `inputRequests` entry named `confirm_force`: an "
+        "`elicitation/create` form whose message says \"Forcing the lid may damage the box ... Do it anyway?\" and asks for a boolean "
+        "`proceed`. It also has a `requestState`, an opaque token. The server has now forgotten the request, and nothing is waiting.",
+        "3. The client asks the person.",
+        "4. The client sends the original call again, adding `inputResponses` with `confirm_force: {action: \"accept\", content: {proceed: true}}` "
+        "and the same `requestState`, unchanged.",
+        "5. The server returns an ordinary result: the lid shudders.",
+        "",
+        "What to notice:",
+        "",
+    ],
+}
+
 def cells(line):
     line = line.strip()
     if line.startswith('|'): line = line[1:]
@@ -37,10 +66,16 @@ def convert(src, note):
     out, i, fence = [], 0, False
     while i < len(lines):
         l = lines[i]
-        if l.startswith('```'):
-            fence = not fence; out.append(l); i += 1; continue
-        if fence:
-            out.append(l); i += 1; continue
+        if l.startswith('```') and not fence:
+            j = i + 1
+            while not lines[j].startswith('```'): j += 1
+            block = '\n'.join(lines[i + 1:j])
+            key = next((k for k in AS_LISTS if k in block), None)
+            if key:  # ASCII diagrams do not survive Medium's importer; say the same thing as a list
+                out += AS_LISTS[key]
+            else:
+                out += lines[i:j + 1]
+            i = j + 1; continue
         if l.startswith('|'):
             j = i
             while j < len(lines) and lines[j].startswith('|'): j += 1
