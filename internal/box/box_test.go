@@ -1,6 +1,7 @@
 package box_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -376,5 +377,18 @@ func TestSpeakingWithoutAWordSaysWhatToGive(t *testing.T) {
 	r := act(t, sv, id, "grille", "speak", nil)
 	if !r.IsError || !strings.Contains(r.Text, "Give {word: string}.") {
 		t.Errorf("reply: %+v", r)
+	}
+}
+
+func TestUndersideNamesReachTheStars(t *testing.T) {
+	w := box.World(&box.State{Seed: "-"})
+	for _, name := range []string{"base", "bottom", "underside", "Underneath"} {
+		node, _, err := box.GetNode(w, "box."+name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !strings.Contains(fmt.Sprint(box.Describe(node, name)["values"]), "tiny stars") {
+			t.Errorf("%s did not reach the stars", name)
+		}
 	}
 }

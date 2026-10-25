@@ -102,7 +102,7 @@ func World(s *State) Node {
 		if s.DrawerOpen {
 			// The card lies in the drawer, as the story says. "card" also works from the box (see lookup).
 			drawer["card"] = Node{"description": "A brass card, engraved with a short list of words.",
-				"text": CardText(), "inscription": "Say the word that has as many letters as the stars stamped under the box.",
+				"text": CardText(), "inscription": "Say the word that has as many letters as the stars stamped under the box, on its underside.",
 				"_actions": actions{}}
 		}
 		w["drawer"] = drawer
@@ -113,11 +113,17 @@ func World(s *State) Node {
 	return w
 }
 
+// undersideNames are the other things people and models call the base, which holds the stars.
+var undersideNames = map[string]bool{"bottom": true, "underside": true, "underneath": true, "underbelly": true}
+
 // lookup finds a child by name. The card lies in the drawer, and "card" also works from the box itself,
 // because that is where people and older clients look first.
 func lookup(n Node, name string) (any, bool) {
 	if v, ok := visible(n)[name]; ok {
 		return v, true
+	}
+	if _, ok := n["base"]; ok && undersideNames[strings.ToLower(name)] {
+		return visible(n)["base"], true
 	}
 	if name == "card" {
 		if d, ok := n["drawer"].(Node); ok {
