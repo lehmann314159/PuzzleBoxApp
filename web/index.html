@@ -543,10 +543,13 @@ initChat();
 const menu = $('#partmenu');
 function closeMenu(){ menu.hidden = true; menu.innerHTML = ''; }
 const partName = p => p.startsWith('dials.') ? 'dial ' + p.slice(6) : p;
-function argFields(desc){ // "args {to: 0-9} or {by: integer}" -> [{name:'to', type:'0-9'}]
-  const m = /^args\s*\{([^}]*)\}/.exec(desc || ''); if(!m) return null;
-  return m[1].split(',').map(x => x.split(':').map(t => t.trim())).filter(a => a[0]).map(([name, type]) => ({name, type: type || 'string'}));
+function argForms(desc){ // "args {to: 0-9} or {by: integer}" -> [[{name:'to', type:'0-9'}], [{name:'by', type:'integer'}]]
+  if(!/^args\b/.test(desc || '')) return null;
+  const forms = [...desc.matchAll(/\{([^}]*)\}/g)].map(m =>
+    m[1].split(',').map(x => x.split(':').map(t => t.trim())).filter(a => a[0]).map(([name, type]) => ({name, type: type || 'string'})));
+  return forms.length ? forms : null;
 }
+const isNumeric = type => /\d|integer|number/.test(type);
 function noteDirect(path, verb, args, result){
   const what = `${verb} ${partName(path)}` + (args ? ' ' + JSON.stringify(args) : '');
   say('note', `You did this yourself: ${what}. The box said: ${result}`);
@@ -575,26 +578,37 @@ async function openMenu(path, ev){
   menu.style.left = Math.max(0, Math.min(ev.clientX - pr.left + pane.scrollLeft, pr.width - 340)) + 'px';
   menu.style.top = (ev.clientY - pr.top + pane.scrollTop + 10) + 'px';
   menu.innerHTML = `<div class="mt">${esc(partName(path))}</div>`;
+  const status = document.createElement('div'); status.className = 'st';
   Object.entries(acts).forEach(([verb, desc]) => {
-    const fields = argFields(desc), row = document.createElement('div');
-    row.className = 'row2';
-    const inputs = (fields ? fields.slice(0, 1) : []).map(f => {
-      const i = document.createElement('input'); i.placeholder = f.name + (/\d|integer|number/.test(f.type) ? ' (' + f.type + ')' : '');
-      i.dataset.name = f.name; i.dataset.num = /\d|integer|number/.test(f.type) ? '1' : ''; return i;
+    const forms = argForms(desc);
+    (forms || [null]).forEach((fields, n) => {
+      const row = document.createElement('div'); row.className = 'row2';
+      const inputs = (fields || []).map(f => {
+        const i = document.createElement('input');
+        i.placeholder = f.name + (isNumeric(f.type) ? ' (' + f.type + ')' : '');
+        i.dataset.name = f.name; i.dataset.num = isNumeric(f.type) ? '1' : ''; return i;
+      });
+      const b = document.createElement('button'); b.className = 'verb'; b.type = 'button'; b.textContent = verb;
+      b.onclick = () => {
+        let args = null;
+        if(inputs.length){
+          args = {};
+          for(const i of inputs){
+            const raw = i.value.trim();
+            if(raw === ''){ status.textContent = `Fill in ${i.dataset.name} first.`; i.focus(); return; }
+            const v = i.dataset.num ? Number(raw) : raw;
+            if(i.dataset.num && !Number.isInteger(v)){ status.textContent = `${i.dataset.name} needs a whole number, like 4. Got "${raw}".`; i.focus(); return; }
+            args[i.dataset.name] = v;
+          }
+        }
+        doAct(path, verb, args, false);
+      };
+      row.append(b, ...inputs);
+      if(n === 0){ const d = document.createElement('div'); d.className = 'd'; d.textContent = forms ? desc.replace(/^args\s*/, 'takes ') : desc; row.append(d); }
+      menu.append(row);
     });
-    const b = document.createElement('button'); b.className = 'verb'; b.textContent = verb; b.type = 'button';
-    b.onclick = () => {
-      let args = null;
-      if(inputs.length){
-        const i = inputs[0], raw = i.value.trim(); if(raw === ''){ i.focus(); return; }
-        args = {[i.dataset.name]: i.dataset.num ? Number(raw) : raw};
-      }
-      doAct(path, verb, args, false);
-    };
-    row.append(b, ...inputs);
-    const d = document.createElement('div'); d.className = 'd'; d.textContent = fields ? (desc.replace(/^args\s*/, 'takes ')) : desc; row.append(d);
-    menu.append(row);
   });
+  menu.append(status);
   if(!Object.keys(acts).length) menu.insertAdjacentHTML('beforeend', '<div class="st">Nothing to do to this part.</div>');
   if(cfg && cfg.agent && cfg.agent.enabled){
     const a = document.createElement('div'); a.className = 'ask';
