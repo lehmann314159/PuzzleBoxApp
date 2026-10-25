@@ -78,7 +78,7 @@ func TestSolveUsingOnlyTheToolInterface(t *testing.T) {
 		t.Fatal("no card after pulling the drawer")
 	}
 	word := v.Secret["word"].(string)
-	if r := act(t, sv, id, "grille", "speak", map[string]any{"word": "wrong"}); r.Text != "The grille hums, then goes still. That was not it." {
+	if r := act(t, sv, id, "grille", "speak", map[string]any{"word": "wrong"}); !strings.HasPrefix(r.Text, "The grille hums, then goes still. That was not it.") {
 		t.Fatalf("wrong word: %s", r.Text)
 	}
 	if r := act(t, sv, id, "grille", "speak", map[string]any{"word": word}); r.Text != box.Final {
@@ -284,5 +284,31 @@ func TestSpeakingTooEarlyPointsBackIntoTheBox(t *testing.T) {
 	}
 	if v, _ := sv.View(id, false); v.Solved {
 		t.Error("an early word solved the box")
+	}
+}
+
+// A wrong word is told whether the right one is longer or shorter, like a wheel's scratch and tick.
+func TestAWrongWordIsToldLongerOrShorter(t *testing.T) {
+	sv := newService(t)
+	id := open(t, sv, "length")
+	v, _ := sv.View(id, true)
+	for i, p := range v.Secret["combo"].([3]int) {
+		act(t, sv, id, "dials."+string("ABC"[i]), "turn", map[string]any{"to": float64(p)})
+	}
+	for _, step := range [][2]string{{"latch", "release"}, {"lid", "open"}, {"drawer", "pull"}} {
+		act(t, sv, id, step[0], step[1], nil)
+	}
+	word := v.Secret["word"].(string)
+	say := func(w string) string {
+		return act(t, sv, id, "grille", "speak", map[string]any{"word": w}).Text
+	}
+	if got := say(word + "x"); !strings.Contains(got, "shorter") {
+		t.Errorf("too long: %s", got)
+	}
+	if got := say(word[:len(word)-1]); !strings.Contains(got, "longer") {
+		t.Errorf("too short: %s", got)
+	}
+	if got := say(strings.Repeat("z", len(word))); !strings.Contains(got, "right length, but not the right word") {
+		t.Errorf("right length: %s", got)
 	}
 }

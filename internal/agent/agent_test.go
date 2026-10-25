@@ -262,6 +262,41 @@ func TestConfigOffersSuggestions(t *testing.T) {
 	}
 }
 
+func TestAnErrorIsMarkedInTheWordsTheModelSees(t *testing.T) {
+	o := newStub(t,
+		callTool("act", map[string]any{"box_id": "box_aaaaaaaaaa", "target": "lid", "verb": "open"}), // no such box
+		say("I could not."))
+	m, _ := newManager(t, o, nil)
+	run(t, m, nil, chat(m, "go", ""))
+	var toolMsg string
+	for _, msg := range o.sent[1]["messages"].([]any) {
+		if mm := msg.(map[string]any); mm["role"] == "tool" {
+			toolMsg = fmt.Sprint(mm["content"])
+		}
+	}
+	if !strings.HasPrefix(toolMsg, "That did not work: ") {
+		t.Errorf("the model saw %q", toolMsg)
+	}
+}
+
+func TestARepeatingModelIsToldOnceAsTheUser(t *testing.T) {
+	id := box.BoxID("circle2")
+	o := newStub(t,
+		callTool("open_box", map[string]any{"seed": "circle2"}),
+		callTool("act", map[string]any{"box_id": id, "target": "grille", "verb": "speak"}))
+	m, _ := newManager(t, o, func(c *agent.Config) { c.MaxSteps = 30 })
+	run(t, m, nil, chat(m, "go", ""))
+	var nudges int
+	for _, msg := range o.sent[len(o.sent)-1]["messages"].([]any) {
+		if mm := msg.(map[string]any); mm["role"] == "user" && strings.Contains(fmt.Sprint(mm["content"]), "same call") {
+			nudges++
+		}
+	}
+	if nudges != 1 {
+		t.Errorf("the user-role nudge appeared %d times, want once", nudges)
+	}
+}
+
 func TestAgentRepairsAnObjectSentAsAString(t *testing.T) {
 	id := box.BoxID("coerce")
 	o := newStub(t,

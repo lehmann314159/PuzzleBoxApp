@@ -154,6 +154,9 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 					lastCall, repeats = sig, 1
 				}
 				content := truncate(text, maxToolText)
+				if isErr { // Ollama has no error flag on a tool result, so say it in the words
+					content = "That did not work: " + content
+				}
 				if repeats >= nudgeAfter {
 					content += fmt.Sprintf("\n[You have made this exact call %d times and got this same answer. "+
 						"Change the call, try something else, or say plainly that you cannot proceed.]", repeats)
@@ -183,6 +186,11 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 					out(Text(res), IsError(res), args)
 				}
 			}
+		}
+		if repeats == nudgeAfter {
+			// A tool message is the part a small model weighs least, so say it once as the user, too.
+			msgs = append(msgs, Message{Role: "user", Content: "You keep making the same call and getting the same answer. " +
+				"Stop. Say in one sentence what you know so far, then try something different."})
 		}
 		if repeats >= giveUpAfter {
 			return fmt.Errorf("stopped: the model made the same call %d times and got the same answer each time", repeats)

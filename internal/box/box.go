@@ -458,7 +458,16 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 			s.Solved = true
 			return Final, false
 		}
-		return "The grille hums, then goes still. That was not it.", false
+		text := "The grille hums, then goes still. That was not it."
+		switch {
+		case len(said) < len(word):
+			text += " The word it wants is longer."
+		case len(said) > len(word):
+			text += " The word it wants is shorter."
+		default:
+			text += " It is the right length, but not the right word."
+		}
+		return text, false
 
 	case t.Kind == "latch" && verb == "release":
 		if s.Dials == combo {
