@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -359,31 +358,9 @@ func TestAModelThatStallsTwiceGivesAClearError(t *testing.T) {
 	}
 }
 
-func TestWhatTheModelHasLearnedComesBackInThePrompt(t *testing.T) {
-	id := box.BoxID("notes")
-	o := newStub(t,
-		callTool("open_box", map[string]any{"seed": "notes"}),
-		callTool("act", map[string]any{"box_id": id, "target": "dials.A", "verb": "turn", "args": map[string]any{"to": 3}}),
-		callTool("act", map[string]any{"box_id": id, "target": "dials.A", "verb": "listen"}),
-		say("Done."))
-	m, _ := newManager(t, o, nil)
-	steps := run(t, m, nil, chat(m, "Find where dial A ticks.", ""))
-	first := o.sent[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
-	last := o.sent[len(o.sent)-1]["messages"].([]any)[0].(map[string]any)["content"].(string)
-	if strings.Contains(first, "already found out") {
-		t.Errorf("the first prompt already has notes: %s", first)
-	}
-	if !regexp.MustCompile(`Dial A, positions you have listened at: 3 (silence|scratch|TICK)`).MatchString(last) {
-		t.Errorf("the last prompt does not remember the listen: %s", last)
-	}
-	if steps[len(steps)-1].Kind != "final" {
-		t.Errorf("steps %s", kinds(steps))
-	}
-}
-
 func TestTheDefaultsLeaveRoomToSolveAndStopAHangFast(t *testing.T) {
 	m := agent.New(agent.Config{})
-	if m.MaxSteps != 100 || m.CallTimeout != 60*time.Second {
+	if m.MaxSteps != 60 || m.CallTimeout != 60*time.Second {
 		t.Errorf("defaults are %d turns and %v", m.MaxSteps, m.CallTimeout)
 	}
 }

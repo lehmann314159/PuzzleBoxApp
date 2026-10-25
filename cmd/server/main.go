@@ -62,7 +62,7 @@ func main() {
 
 	port := env("PORT", "9100")
 	temp, _ := strconv.ParseFloat(env("AGENT_TEMPERATURE", "0.1"), 64)
-	maxSteps, _ := strconv.Atoi(env("MAX_STEPS", "100"))
+	maxSteps, _ := strconv.Atoi(env("MAX_STEPS", "60"))
 	callTimeout, _ := time.ParseDuration(env("OLLAMA_CALL_TIMEOUT", "60s"))
 	var models []string
 	for _, name := range strings.Split(os.Getenv("OLLAMA_MODELS"), ",") {

@@ -35,7 +35,7 @@ type Manager struct {
 
 func New(c Config) *Manager {
 	if c.MaxSteps <= 0 {
-		c.MaxSteps = 100
+		c.MaxSteps = 60
 	}
 	if c.CallTimeout <= 0 {
 		c.CallTimeout = 60 * time.Second

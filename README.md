@@ -67,6 +67,8 @@ server on 24 to 25 October 2026, so read them as a guide, not a benchmark.
 | The prompt is sensitive | One extra sentence took "Break the lid open" from 10/10 to 0/10; moving a different sentence to the end of the prompt took another row from 0/8 to 8/8 | Run the table before editing `systemPrompt` in `internal/agent/agent.go` |
 | Open-ended goals fail | "Open the box" opened the lid in 0 of 12 runs across two prompt variants (loops, empty replies, running out of turns) | The page offers short steps and questions instead; Autopilot is there for the whole solve |
 | Recovering is not the same as getting it right | Models got the first dial call wrong every time (0 of 8 right first try for `gemma4:12b`), and most fixed it from the box's error message | The table scores the outcome and reports "right on the first try" separately |
+| Open-ended solving stayed hard | After the box's text was made self-explanatory, `gemma4:12b` solved "Open the box" in 2 of 23 runs (0 of 12 before). The runs failed by speaking to the grille before looking in the drawer, by turning dials without finding all three ticks, and by running out of turns | The page steers people toward short steps and questions, with Autopilot for the whole solve. A notebook of what the chat had learned (0 of 6), a longer turn limit, nudges when it repeats itself, and clearer error text were each tried; none made it reliable, so only the cheap ones stayed |
+| A model call can hang | About 1 call in 190 never answered; it held the serial server for three minutes. Prompts stayed small (about 4,000 tokens at 100 messages) and prompt time stayed flat, so it was not the context or the cache | Each call has a 60 s limit (`OLLAMA_CALL_TIMEOUT`) and is asked once more; replies are capped at 512 tokens; `OLLAMA_DEBUG=1` logs tokens and timings per call |
 | Temperature barely matters here | `gemma4:12b` passed 55/55 at temperature 0.0 and at 0.1, and 51/55 at 0.5 as first scored (53/55 once two correct runs, which spelled a target `dial.A`, were no longer counted as misses). The first dial call was right in 0 of 5 runs at all three temperatures | The default is 0.1, from the spec's "low, for repeatable demos"; it was not tuned. Lower is fine, and 0.5 costs a little on the most fragile row |
 
 Where it ended up: `gemma4:12b` with thinking off passes 55 of 55 on the current prompt and 54 of 55 on the original, at about
@@ -92,7 +94,7 @@ box, run it: `PROMPT_TABLE_ONLY` runs a few rows, and the report ends with the t
 | `OLLAMA_MODEL` | first model Ollama lists | Default for Agent mode. |
 | `OLLAMA_MODELS` | whatever Ollama lists | Allow-list for the model picker. |
 | `OLLAMA_THINK` | unset (`off` in compose) | `off` stops a reasoning model thinking before it answers (a thinking model can take 50 s a turn); `on` forces it; unset leaves it to the model. |
-| `MAX_STEPS`, `AGENT_TEMPERATURE` | `100`, `0.1` | Model turns per chat (an open-ended "open the box" can take dozens of moves), and repeatability. A model that repeats one call five times is stopped sooner. |
+| `MAX_STEPS`, `AGENT_TEMPERATURE` | `60`, `0.1` | Model turns per chat (an open-ended "open the box" can take dozens of moves), and repeatability. A model that repeats one call five times is stopped sooner. |
 | `OLLAMA_CALL_TIMEOUT` | `60s` | One call to the model. A call that stalls is asked again once. Calls normally take under 5 s; raise it for a large or thinking model. |
 | `STRICT_PARAM_HEADERS`, `VALIDATE_ARGS` | `0`, `1` | `VALIDATE_ARGS=0` brings back the defect the QA talk finds. |
 
