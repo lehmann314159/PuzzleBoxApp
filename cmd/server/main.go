@@ -62,7 +62,7 @@ func main() {
 
 	port := env("PORT", "9100")
 	temp, _ := strconv.ParseFloat(env("AGENT_TEMPERATURE", "0.1"), 64)
-	maxSteps, _ := strconv.Atoi(env("MAX_STEPS", "30"))
+	maxSteps, _ := strconv.Atoi(env("MAX_STEPS", "60"))
 	var models []string
 	for _, name := range strings.Split(os.Getenv("OLLAMA_MODELS"), ",") {
 		if name = strings.TrimSpace(name); name != "" {

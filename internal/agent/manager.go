@@ -34,7 +34,7 @@ type Manager struct {
 
 func New(c Config) *Manager {
 	if c.MaxSteps <= 0 {
-		c.MaxSteps = 30
+		c.MaxSteps = 60
 	}
 	m := &Manager{Config: c, Ollama: &Ollama{URL: c.OllamaURL, Temperature: c.Temperature, Think: c.Think}}
 	m.Jobs.MaxRunning = c.MaxRunning

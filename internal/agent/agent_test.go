@@ -194,12 +194,39 @@ func TestAgentSurvivesBadToolCalls(t *testing.T) {
 	}
 }
 
-func TestAgentStopsAtMaxSteps(t *testing.T) {
-	o := newStub(t, callTool("open_box", map[string]any{"seed": "loop"})) // repeats forever
-	m, _ := newManager(t, o, func(c *agent.Config) { c.MaxSteps = 5 })
+func TestAgentIsToldAboutAndStoppedFromRepeatingItself(t *testing.T) {
+	id := box.BoxID("circle")
+	o := newStub(t,
+		callTool("open_box", map[string]any{"seed": "circle"}),
+		callTool("act", map[string]any{"box_id": id, "target": "grille", "verb": "speak"})) // the last call repeats forever
+	m, _ := newManager(t, o, func(c *agent.Config) { c.MaxSteps = 30 })
 	steps := run(t, m, nil, chat(m, "go", ""))
 	last := steps[len(steps)-1]
-	if last.Kind != "error" || !strings.Contains(last.Text, "5 model turns") || len(o.sent) != 5 {
+	if last.Kind != "error" || !strings.Contains(last.Text, "same call 5 times") {
+		t.Fatalf("last: %+v", last)
+	}
+	if n := len(o.sent); n != 6 { // open_box, then the same act five times
+		t.Errorf("the model was called %d times, want 6", n)
+	}
+	// What the model saw: no nudge on the second identical answer, a nudge from the third on.
+	var tools []string
+	for _, msg := range o.sent[len(o.sent)-1]["messages"].([]any) {
+		if mm := msg.(map[string]any); mm["role"] == "tool" {
+			tools = append(tools, fmt.Sprint(mm["content"]))
+		}
+	}
+	if len(tools) != 5 || strings.Contains(tools[2], "exact call") || !strings.Contains(tools[3], "exact call 3 times") ||
+		!strings.Contains(tools[4], "exact call 4 times") {
+		t.Errorf("tool messages the model saw: %q", tools)
+	}
+}
+
+func TestAgentStopsAtMaxSteps(t *testing.T) {
+	o := newStub(t, callTool("open_box", map[string]any{"seed": "loop"})) // repeats forever
+	m, _ := newManager(t, o, func(c *agent.Config) { c.MaxSteps = 4 })
+	steps := run(t, m, nil, chat(m, "go", ""))
+	last := steps[len(steps)-1]
+	if last.Kind != "error" || !strings.Contains(last.Text, "4 model turns") || len(o.sent) != 4 {
 		t.Fatalf("last: %+v, model calls: %d", last, len(o.sent))
 	}
 }

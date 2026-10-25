@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,12 @@ import (
 )
 
 const maxToolText = 4000
+
+// A model that makes the same call and gets the same answer again and again is told so, then stopped.
+const (
+	nudgeAfter  = 3
+	giveUpAfter = 5
+)
 
 func systemPrompt(boxID string) string {
 	s := "You can operate a brass puzzle box on a table using the tools you are given. " +
@@ -48,6 +55,8 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 	tools, names := ollamaTools(rawTools)
 
 	msgs := append([]Message{{Role: "system"}}, history...)
+	var lastCall string // the previous call and its answer, to notice a model going round in a circle
+	repeats := 0
 	for turn := 0; turn < m.MaxSteps; turn++ {
 		msgs[0].Content = systemPrompt(boxID) // small models forget handles, so restate it every turn
 		turnCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -93,7 +102,18 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 			name := tc.name
 			out := func(text string, isErr bool, args any) {
 				j.emit(Step{Kind: "tool", Name: name, Args: args, Text: text, IsError: isErr, BoxID: boxID})
-				msgs = append(msgs, Message{Role: "tool", ToolName: name, Content: truncate(text, maxToolText)})
+				body, _ := json.Marshal(args)
+				if sig := name + string(body) + text; sig == lastCall {
+					repeats++
+				} else {
+					lastCall, repeats = sig, 1
+				}
+				content := truncate(text, maxToolText)
+				if repeats >= nudgeAfter {
+					content += fmt.Sprintf("\n[You have made this exact call %d times and got this same answer. "+
+						"Change the call, try something else, or say plainly that you cannot proceed.]", repeats)
+				}
+				msgs = append(msgs, Message{Role: "tool", ToolName: name, Content: content})
 			}
 			args, argErr := tc.args, tc.err
 			switch {
@@ -115,6 +135,9 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 					out(Text(res), IsError(res), args)
 				}
 			}
+		}
+		if repeats >= giveUpAfter {
+			return fmt.Errorf("stopped: the model made the same call %d times and got the same answer each time", repeats)
 		}
 	}
 	return fmt.Errorf("stopped after %d model turns without a final answer", m.MaxSteps)
