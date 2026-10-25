@@ -58,13 +58,14 @@ server on 24 to 25 October 2026, so read them as a guide, not a benchmark.
 | The prompt is sensitive | One extra sentence took "Break the lid open" from 10/10 to 0/10; moving a different sentence to the end of the prompt took another row from 0/8 to 8/8 | Run the table before editing `systemPrompt` in `internal/agent/agent.go` |
 | Open-ended goals fail | "Open the box" opened the lid in 0 of 12 runs across two prompt variants (loops, empty replies, running out of turns) | The page offers short steps and questions instead; Autopilot is there for the whole solve |
 | Recovering is not the same as getting it right | Models got the first dial call wrong every time (0 of 8 right first try for `gemma4:12b`), and most fixed it from the box's error message | The table scores the outcome and reports "right on the first try" separately |
+| Temperature barely matters here | `gemma4:12b` passed 55/55 at temperature 0.0 and at 0.1, and 51/55 at 0.5 as first scored (53/55 once two correct runs, which spelled a target `dial.A`, were no longer counted as misses). The first dial call was right in 0 of 5 runs at all three temperatures | The default is 0.1, from the spec's "low, for repeatable demos"; it was not tuned. Lower is fine, and 0.5 costs a little on the most fragile row |
 
 Where it ended up: `gemma4:12b` with thinking off passes 55 of 55 on the current prompt and 54 of 55 on the original, at about
 3 s for a read and 8 to 18 s for a multi-step prompt. `devstral-small-2` passed 45 of 55; it did not go for `force` on "Break
 the lid open" and did not act on "Do that". Larger and reasoning models were either slower or not measured.
 In every run, the lid was never forced when the question was declined.
 
-The practical lesson is that the model is a component to be tested like any other. Its failures looked like server bugs until the
+The practical lesson is that the model is a component to be tested like any other. A strict check can also be the thing that is wrong: the first run at 0.5 scored correct answers as misses until the check compared what a target means, not how it is spelled. Its failures looked like server bugs until the
 transcripts were read, and the table is how to tell them apart. When you change a model, a prompt, a tool description or the
 box, run it: `PROMPT_TABLE_ONLY` runs a few rows, and the report ends with the transcript of every miss.
 
