@@ -50,6 +50,12 @@ which fails the test when any prompt's pass rate is lower; unset, the table is o
 transcript of every miss: read those, since a miss is usually a tool-description problem. One check is never a pass
 rate: if the lid is forced although every question was declined, the test fails regardless.
 
+### What the chat is for
+
+The chat carries what a person wants to the box through MCP. It is not meant to solve the box on its own: the click menu on the
+box makes exact moves directly, Autopilot shows a whole solve, and the model is there to look, explain, suggest and do what it is
+told. Where the model is weak, the code goes around it (the guards in `internal/agent`) instead of coaxing it with wording.
+
 ### What the table has shown (about the model, not about MCP)
 
 The MCP layer worked from the first run: tool lists, calls, arguments and results all behaved. What varied was the model, and
@@ -69,6 +75,8 @@ server on 24 to 25 October 2026, so read them as a guide, not a benchmark.
 | Recovering is not the same as getting it right | Models got the first dial call wrong every time (0 of 8 right first try for `gemma4:12b`), and most fixed it from the box's error message | The table scores the outcome and reports "right on the first try" separately |
 | Open-ended solving stayed hard | After the box's text was made self-explanatory, `gemma4:12b` solved "Open the box" in 2 of 23 runs (0 of 12 before). The runs failed by speaking to the grille before looking in the drawer, by turning dials without finding all three ticks, and by running out of turns | The page steers people toward short steps and questions, with Autopilot for the whole solve. A notebook of what the chat had learned (0 of 6), a longer turn limit, nudges when it repeats itself, and clearer error text were each tried; none made it reliable, so only the cheap ones stayed |
 | A model call can hang | About 1 call in 190 never answered; it held the serial server for three minutes. Prompts stayed small (about 4,000 tokens at 100 messages) and prompt time stayed flat, so it was not the context or the cache | Each call has a 60 s limit (`OLLAMA_CALL_TIMEOUT`) and is asked once more; replies are capped at 512 tokens; `OLLAMA_DEBUG=1` logs tokens and timings per call |
+| It keeps playing after it is told what to do | Once the box said what it wanted, the model followed "Turn dial A to 4" by turning dial B too (5/5 fell to 0/5) | A move that changes the box is allowed only on a part the user's message (or the suggestion they are answering) names; anything else is refused with "You were not asked to change…". Back to 5/5 |
+| It opens a second box, or says it did something it did not | The first button opened an unasked box, and "the latch has been released" came with no call | `open_box` is refused while a box is on the table unless the user asks for a new one. The second is left to the page, where the box's chips show what is true |
 | Temperature barely matters here | `gemma4:12b` passed 55/55 at temperature 0.0 and at 0.1, and 51/55 at 0.5 as first scored (53/55 once two correct runs, which spelled a target `dial.A`, were no longer counted as misses). The first dial call was right in 0 of 5 runs at all three temperatures | The default is 0.1, from the spec's "low, for repeatable demos"; it was not tuned. Lower is fine, and 0.5 costs a little on the most fragile row |
 
 Where it ended up: `gemma4:12b` with thinking off passes 55 of 55 on the current prompt and 54 of 55 on the original, at about

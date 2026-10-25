@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -362,6 +363,51 @@ func TestTheDefaultsLeaveRoomToSolveAndStopAHangFast(t *testing.T) {
 	m := agent.New(agent.Config{})
 	if m.MaxSteps != 60 || m.CallTimeout != 60*time.Second {
 		t.Errorf("defaults are %d turns and %v", m.MaxSteps, m.CallTimeout)
+	}
+}
+
+func TestTheModelCannotOpenASecondBoxUnlessAsked(t *testing.T) {
+	existing := box.BoxID("exists")
+	for _, c := range []struct {
+		ask     string
+		blocked bool
+	}{{"Where do things stand?", true}, {"Please start a new box.", false}} {
+		o := newStub(t, callTool("open_box", map[string]any{"seed": "second"}), say("ok"))
+		m, st := newManager(t, o, nil)
+		if err := st.Save(existing, box.Fresh("exists")); err != nil {
+			t.Fatal(err)
+		}
+		steps := run(t, m, nil, chat(m, c.ask, existing))
+		boxes, _ := st.RecentBoxes()
+		if c.blocked {
+			if !steps[0].IsError || !strings.Contains(steps[0].Text, "already on the table: "+existing) || slices.Contains(boxes, box.BoxID("second")) {
+				t.Errorf("%q: %+v, boxes %v", c.ask, steps[0], boxes)
+			}
+		} else if steps[0].IsError || !strings.Contains(steps[0].Text, box.BoxID("second")) {
+			t.Errorf("%q should have been allowed: %+v", c.ask, steps[0])
+		}
+	}
+}
+
+func TestTheModelCannotMoveWhatTheUserDidNotName(t *testing.T) {
+	id := box.BoxID("intent")
+	o := newStub(t,
+		callTool("act", map[string]any{"box_id": id, "target": "dials.A", "verb": "turn", "args": map[string]any{"to": 4}}),
+		callTool("act", map[string]any{"box_id": id, "target": "dials.B", "verb": "turn", "args": map[string]any{"to": 1}}),
+		say("I turned dial A to 4."))
+	m, st := newManager(t, o, nil)
+	if err := st.Save(id, box.Fresh("intent")); err != nil {
+		t.Fatal(err)
+	}
+	steps := run(t, m, nil, chat(m, "Turn dial A to 4.", id))
+	if steps[0].IsError || !strings.Contains(steps[0].Text, "rests at 4") {
+		t.Errorf("the move that was asked for: %+v", steps[0])
+	}
+	if !steps[1].IsError || !strings.Contains(steps[1].Text, "You were not asked to change the dial B") {
+		t.Errorf("the move that was not: %+v", steps[1])
+	}
+	if s, _ := st.Load(id); s.Dials != [3]int{4, 0, 0} {
+		t.Errorf("dials are %v, want [4 0 0]", s.Dials)
 	}
 }
 

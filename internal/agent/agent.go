@@ -108,6 +108,7 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 	tools, names := ollamaTools(rawTools)
 	objects := objectParams(rawTools)
 
+	intent := intentOf(history)
 	msgs := append([]Message{{Role: "system"}}, history...)
 	var lastCall string // the previous call and its answer, to notice a model going round in a circle
 	repeats, empties := 0, 0
@@ -180,6 +181,10 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 				args = asObjects(args, objects[name])
 			}
 			switch {
+			case name == "open_box" && boxID != "" && !asksForNewBox(history):
+				out(fmt.Sprintf("A box is already on the table: %s. Use that box_id. (To start another, press New box on the page.)", boxID), true, tc.raw)
+			case name == "act" && intent.refusal(fmt.Sprint(args["target"]), fmt.Sprint(args["verb"])) != "":
+				out(intent.refusal(fmt.Sprint(args["target"]), fmt.Sprint(args["verb"])), true, args)
 			case !contains(names, name):
 				out(fmt.Sprintf("There is no tool called %q. The tools are: %s.", name, strings.Join(names, ", ")), true, tc.raw)
 			case argErr != nil:
@@ -209,6 +214,24 @@ func (m *Manager) Chat(ctx context.Context, j *Job, model string, history []Mess
 		}
 	}
 	return fmt.Errorf("stopped after %d model turns without a final answer", m.MaxSteps)
+}
+
+// asksForNewBox reports whether the user's latest message wants another box. Otherwise the model may not open one:
+// small models do it unprompted, and the page would then switch the display to a box nobody asked for.
+func asksForNewBox(history []Message) bool {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role != "user" {
+			continue
+		}
+		t := strings.ToLower(history[i].Content)
+		for _, w := range []string{"new box", "another box", "fresh box", "start over", "start again", "reset", "different box"} {
+			if strings.Contains(t, w) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 func contains(list []string, s string) bool {

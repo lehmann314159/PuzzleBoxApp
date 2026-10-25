@@ -61,9 +61,13 @@ func init() {
 		},
 		promptCase{
 			name: "button: What did that just tell me?", prompt: agent.SuggestionPrompt("told"), seeded: true,
-			history: []agent.Message{user("Listen to dial A."), said("I listened to dial A and heard silence.")},
-			check:   readOnly(false, nil),
-			good:    []map[string]any{say("Silence means dial A is not in the right position yet.")},
+			history: []agent.Message{user("Listen to the grille."),
+				said("The grille carries three sounds. Dial A: silence. Dial B: a faint scratch. Dial C: a clean, bright tick.")},
+			// The button's own text carries the legend (tick = right, scratch = one step off, silence = far), so the
+			// answer is right by construction. Judging free text by keywords proved unreliable, so this row only
+			// checks that the model answers in words and changes nothing.
+			check: readOnly(false, nil),
+			good:  []map[string]any{say("Dial C ticks, so it is right. Dial B scratches, so it is one step off. Dial A is silent, so it is far.")},
 			bad: [][]map[string]any{
 				{say("")},
 				{turnA, say("I turned dial A.")},

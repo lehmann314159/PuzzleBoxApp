@@ -210,7 +210,7 @@ func TestThePlayerCanPickTheWordFromTheText(t *testing.T) {
 	base, _ := sv.Examine(id, "base")
 	card, _ := sv.Examine(id, "card")
 	vals := card.Data.(map[string]any)["values"].(map[string]any)
-	if !strings.Contains(fmtAny(vals["inscription"]), "as many letters as the underside has stars") {
+	if !strings.Contains(fmtAny(vals["inscription"]), "as many letters as the stars stamped under the box") {
 		t.Fatalf("the card does not say what to do: %v", vals)
 	}
 	n, _ := strconv.Atoi(regexp.MustCompile(`(\d+) tiny stars`).FindStringSubmatch(fmtAny(base.Data.(map[string]any)["values"].(map[string]any)["description"]))[1])
@@ -310,5 +310,61 @@ func TestAWrongWordIsToldLongerOrShorter(t *testing.T) {
 	}
 	if got := say(strings.Repeat("z", len(word))); !strings.Contains(got, "right length, but not the right word") {
 		t.Errorf("right length: %s", got)
+	}
+}
+
+// The card lies in the drawer, as the story says, and "card" still works from the box.
+func TestTheCardLiesInTheDrawer(t *testing.T) {
+	sv := newService(t)
+	id := open(t, sv, "drawer-card")
+	v, _ := sv.View(id, true)
+	for i, p := range v.Secret["combo"].([3]int) {
+		act(t, sv, id, "dials."+string("ABC"[i]), "turn", map[string]any{"to": float64(p)})
+	}
+	for _, step := range [][2]string{{"latch", "release"}, {"lid", "open"}} {
+		act(t, sv, id, step[0], step[1], nil)
+	}
+	if r, _ := sv.Examine(id, "drawer.card"); !r.IsError {
+		t.Errorf("the card was visible before the drawer was pulled: %s", r.Text)
+	}
+	act(t, sv, id, "drawer", "pull", nil)
+	for _, path := range []string{"drawer.card", "box.drawer.card", "card"} {
+		r, _ := sv.Examine(id, path)
+		if r.IsError || !strings.Contains(r.Text, box.CardText()) {
+			t.Errorf("examine %s: %s", path, r.Text)
+		}
+	}
+	if d, _ := sv.Examine(id, "drawer"); !strings.Contains(d.Text, `"card"`) {
+		t.Errorf("the open drawer does not say it holds a card: %s", d.Text)
+	}
+	q, _ := sv.Query(id, "{ drawer { card { text } } }")
+	if !strings.Contains(q.Text, box.CardText()) {
+		t.Errorf("query through the drawer: %s", q.Text)
+	}
+	q, _ = sv.Query(id, "{ card { text inscription } }") // how older clients ask
+	if !strings.Contains(q.Text, box.CardText()) || strings.Contains(q.Text, "no field") {
+		t.Errorf("query from the box: %s", q.Text)
+	}
+}
+
+// A verb that belongs to another part says where it works; a part with no such verb says what it accepts.
+func TestAWrongVerbSaysWhereItWorks(t *testing.T) {
+	sv := newService(t)
+	id := open(t, sv, "verbs")
+	r := act(t, sv, id, "box", "speak", map[string]any{"word": "oak"})
+	if !r.IsError || !strings.Contains(r.Text, "You can do that to the grille.") {
+		t.Errorf("speak to the box: %s", r.Text)
+	}
+	r = act(t, sv, id, "lid", "break", nil)
+	if !strings.Contains(r.Text, "The lid accepts: force, open.") {
+		t.Errorf("break the lid: %s", r.Text)
+	}
+	r = act(t, sv, id, "dials.A", "listen", nil)
+	if r.IsError {
+		t.Errorf("listen to a dial: %s", r.Text)
+	}
+	r = act(t, sv, id, "dials.A", "release", nil)
+	if !strings.Contains(r.Text, "You can do that to the latch.") {
+		t.Errorf("release a dial: %s", r.Text)
 	}
 }

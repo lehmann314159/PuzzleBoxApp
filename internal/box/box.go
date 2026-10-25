@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -96,18 +97,35 @@ func World(s *State) Node {
 			"_actions": actions{"open": "lift the lid", "force": "pry at the lid (risky; asks for confirmation)"}},
 	}
 	if s.LidOpen {
-		w["drawer"] = Node{"open": s.DrawerOpen, "description": "A shallow drawer under the lid, flush and a little stiff.",
+		drawer := Node{"open": s.DrawerOpen, "description": "A shallow drawer under the lid, flush and a little stiff.",
 			"_actions": actions{"pull": "slide the drawer out"}}
-	}
-	if s.DrawerOpen {
-		w["card"] = Node{"description": "A brass card, engraved with a short list of words.",
-			"text": CardText(), "inscription": "Say the word that has as many letters as the underside has stars.",
-			"_actions": actions{}}
+		if s.DrawerOpen {
+			// The card lies in the drawer, as the story says. "card" also works from the box (see lookup).
+			drawer["card"] = Node{"description": "A brass card, engraved with a short list of words.",
+				"text": CardText(), "inscription": "Say the word that has as many letters as the stars stamped under the box.",
+				"_actions": actions{}}
+		}
+		w["drawer"] = drawer
 	}
 	if s.Solved {
 		w["note"] = Final
 	}
 	return w
+}
+
+// lookup finds a child by name. The card lies in the drawer, and "card" also works from the box itself,
+// because that is where people and older clients look first.
+func lookup(n Node, name string) (any, bool) {
+	if v, ok := visible(n)[name]; ok {
+		return v, true
+	}
+	if name == "card" {
+		if d, ok := n["drawer"].(Node); ok {
+			v, ok := visible(d)["card"]
+			return v, ok
+		}
+	}
+	return nil, false
 }
 
 func visible(n Node) Node {
@@ -184,7 +202,7 @@ func GetNode(w Node, path string) (any, string, error) {
 			}
 			node = hit
 		case Node:
-			v, ok := visible(n)[part]
+			v, ok := lookup(n, part)
 			if !ok {
 				return nil, "", fmt.Errorf("nothing at '%s.%s'. Here you can see: %s", trail, part,
 					strings.Join(sortedKeys(visible(n)), ", "))
@@ -333,7 +351,7 @@ func Resolve(node any, sel []field, path string, errs *[]QueryError) any {
 		out := Node{}
 		vis := visible(n)
 		for _, f := range sel {
-			v, ok := vis[f.name]
+			v, ok := lookup(n, f.name)
 			switch {
 			case f.name == "__fields":
 				out[f.name] = append(sortedKeys(vis), "actions")
@@ -497,5 +515,39 @@ func Apply(s *State, t Target, verb string, args map[string]any) (string, bool) 
 		s.DrawerOpen = true
 		return "The drawer slides out with a brass card lying in it.", false
 	}
-	return fmt.Sprintf("Nothing happens. '%s' does not seem to be something you can do to the %s.", verb, t.Kind), true
+	return unknownVerb(verb, t.Kind), true
+}
+
+// acceptedBy lists the verbs each kind of part accepts, read from the world itself so it cannot drift.
+func acceptedBy() map[string][]string {
+	w := World(&State{Seed: "-", LidOpen: true, DrawerOpen: true})
+	out := map[string][]string{}
+	for _, k := range []string{"grille", "latch", "lid", "drawer"} {
+		if n, ok := w[k].(Node); ok {
+			out[k] = actionNames(n)
+		}
+	}
+	if ds, ok := w["dials"].([]Node); ok && len(ds) > 0 {
+		out["dial"] = actionNames(ds[0])
+	}
+	return out
+}
+
+// unknownVerb is the reply to a verb the part does not accept. It says where the verb does work, or what the part accepts.
+func unknownVerb(verb, kind string) string {
+	text := fmt.Sprintf("Nothing happens. '%s' does not seem to be something you can do to the %s.", verb, kind)
+	acc := acceptedBy()
+	var where []string
+	for _, k := range []string{"grille", "latch", "lid", "drawer", "dial"} {
+		if k != kind && slices.Contains(acc[k], verb) {
+			where = append(where, "the "+k)
+		}
+	}
+	switch {
+	case len(where) > 0:
+		text += " You can do that to " + strings.Join(where, " or ") + "."
+	case len(acc[kind]) > 0:
+		text += " The " + kind + " accepts: " + strings.Join(acc[kind], ", ") + "."
+	}
+	return text
 }

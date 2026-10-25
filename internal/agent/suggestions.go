@@ -20,7 +20,7 @@ var Suggestions = []Suggestion{
 	{ID: "next", Label: "What should I try next?",
 		Prompt: "Look at the box and suggest one good next step, and say why. Don't do it yet; wait until I say so."},
 	{ID: "told", Label: "What did that just tell me?", Show: "reply",
-		Prompt: "Explain what the last result tells us, in plain words. Don't change anything."},
+		Prompt: "Remember: a tick means that dial is right, a scratch means it is one step off, and silence means it is far. Using that, explain what the last result tells us, in plain words. Don't change anything."},
 	{ID: "lid", Label: "Is it safe to force the lid?",
 		Prompt: "Would it be safe to force the lid? Weigh the risk and the cost for me. Don't do it."},
 	{ID: "dothat", Label: "Do that", Show: "after:next", Prompt: "Yes, do that."},
